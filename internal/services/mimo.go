@@ -542,44 +542,21 @@ func GenerateFingerprint(messages []models.Message) string {
 		return ""
 	}
 
-	start := 0
-	if len(messages) > 12 {
-		start = len(messages) - 12
+	firstUserMsgIdx := -1
+	for i, msg := range messages {
+		if msg.Role == "user" {
+			firstUserMsgIdx = i
+			break
+		}
+	}
+	if firstUserMsgIdx == -1 {
+		firstUserMsgIdx = len(messages) - 1
 	}
 
-	var sb strings.Builder
-	for i := start; i < len(messages); i++ {
-		msg := messages[i]
-		if msg.Role == "system" {
-			continue
-		}
-		text := ExtractText(msg.Content, true)
-		if len(text) > 400 {
-			text = text[:400]
-		}
-		if text == "" && len(msg.ToolCalls) == 0 {
-			continue
-		}
-		sb.WriteString(msg.Role)
-		sb.WriteString(":")
-		sb.WriteString(text)
-		if len(msg.ToolCalls) > 0 {
-			for _, tc := range msg.ToolCalls {
-				sb.WriteString("|tool:")
-				sb.WriteString(tc.Function.Name)
-				sb.WriteString("=")
-				sb.WriteString(tc.Function.Arguments)
-			}
-		}
-		sb.WriteString("\n")
+	firstMsg := "user:" + ExtractText(messages[firstUserMsgIdx].Content, true)
+	if len(firstMsg) > 200 {
+		firstMsg = firstMsg[:200]
 	}
-
-	fingerprintInput := sb.String()
-	if fingerprintInput == "" {
-		last := messages[len(messages)-1]
-		fingerprintInput = last.Role + ":" + ExtractText(last.Content, true)
-	}
-
-	sum := md5.Sum([]byte(fingerprintInput))
+	sum := md5.Sum([]byte(firstMsg))
 	return "sess_" + hex.EncodeToString(sum[:])
 }

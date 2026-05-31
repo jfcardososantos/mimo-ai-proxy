@@ -15,57 +15,21 @@ import (
 )
 
 func TestGenerateFingerprint(t *testing.T) {
-	tests := []struct {
-		name     string
-		messages []models.Message
-		wantNonEmpty bool
-	}{
-		{
-			name: "single user message",
-			messages: []models.Message{
-				{Role: "user", Content: "hello"},
-			},
-			wantNonEmpty: true,
-		},
-		{
-			name: "system and user message",
-			messages: []models.Message{
-				{Role: "system", Content: "you are a helpful assistant"},
-				{Role: "user", Content: "hello"},
-			},
-			wantNonEmpty: true,
-		},
-		{
-			name: "long message truncation",
-			messages: []models.Message{
-				{Role: "user", Content: "this is a very long message that should be truncated because it exceeds the limit of two hundred characters in the fingerprint generation logic to ensure stability and efficiency in the session management"},
-			},
-			wantNonEmpty: true,
-		},
-		{
-			name: "no user message fallback",
-			messages: []models.Message{
-				{Role: "system", Content: "instructions"},
-			},
-			wantNonEmpty: true,
-		},
-		{
-			name: "empty messages",
-			messages: []models.Message{},
-			wantNonEmpty: false,
-		},
+	first := GenerateFingerprint([]models.Message{{Role: "user", Content: "hello"}})
+	second := GenerateFingerprint([]models.Message{
+		{Role: "system", Content: "you are a helpful assistant"},
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "hi"},
+	})
+	if first == "" || second == "" {
+		t.Fatal("expected non-empty fingerprints")
+	}
+	if first != second {
+		t.Fatalf("expected stable fingerprint from first user message, got %q and %q", first, second)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := GenerateFingerprint(tt.messages)
-			if tt.wantNonEmpty && got == "" {
-				t.Errorf("GenerateFingerprint() returned empty fingerprint")
-			}
-			if !tt.wantNonEmpty && got != "" {
-				t.Errorf("GenerateFingerprint() = %v, want empty fingerprint", got)
-			}
-		})
+	if got := GenerateFingerprint([]models.Message{}); got != "" {
+		t.Fatalf("expected empty fingerprint for empty messages, got %q", got)
 	}
 }
 
