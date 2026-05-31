@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"mimoproxy/internal/models"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -30,7 +31,9 @@ func FormatToolsAsInstructions(tools []models.Tool) string {
 	sb.WriteString("CRITICAL RULES:\n")
 	sb.WriteString("1. If you need to use a tool, output ONLY the `<tool_call>` block. Do NOT include any normal text explaining what you are doing. Do NOT output conversational text.\n")
 	sb.WriteString("2. You can only use ONE tool per response.\n")
-	sb.WriteString("3. Wait for the tool result before proceeding to the next step.\n\n")
+	sb.WriteString("3. Wait for the tool result before proceeding to the next step.\n")
+	sb.WriteString("4. You MUST use one of the exact tool names listed below. Never invent a new tool name.\n")
+	sb.WriteString("5. If you want shell-style operations like `head`, `cat`, `ls`, `find`, or `sed`, use the `bash` tool if it exists instead of inventing those names as tools.\n\n")
 	sb.WriteString("Available tools:\n")
 
 	for _, tool := range tools {
@@ -158,6 +161,112 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 	}
 
 	return strings.TrimSpace(cleanText), toolCalls
+}
+
+func NormalizeToolCalls(toolCalls []models.ToolCall, availableTools []models.Tool) []models.ToolCall {
+	if len(toolCalls) == 0 || len(availableTools) == 0 {
+		return toolCalls
+	}
+
+	available := make(map[string]models.ToolDefinition, len(availableTools))
+	for _, tool := range availableTools {
+		if tool.Type == "function" {
+			available[tool.Function.Name] = tool.Function
+		}
+	}
+
+	for i := range toolCalls {
+		name := toolCalls[i].Function.Name
+		if _, ok := available[name]; ok {
+			continue
+		}
+
+		if normalized, ok := normalizeToolAlias(name, toolCalls[i].Function.Arguments, available); ok {
+			toolCalls[i].Function.Name = normalized.Name
+			toolCalls[i].Function.Arguments = normalized.Arguments
+		}
+	}
+
+	return toolCalls
+}
+
+func normalizeToolAlias(name string, rawArgs string, available map[string]models.ToolDefinition) (models.ToolFunction, bool) {
+	if _, ok := available["bash"]; !ok {
+		return models.ToolFunction{}, false
+	}
+
+	var args map[string]interface{}
+	_ = json.Unmarshal([]byte(rawArgs), &args)
+
+	buildBash := func(command string) (models.ToolFunction, bool) {
+		payload, err := json.Marshal(map[string]string{"command": command})
+		if err != nil {
+			return models.ToolFunction{}, false
+		}
+		return models.ToolFunction{Name: "bash", Arguments: string(payload)}, true
+	}
+
+	pathKeys := []string{"path", "file_path", "filepath", "file"}
+	firstString := func(keys ...string) string {
+		for _, key := range keys {
+			if val, ok := args[key].(string); ok && strings.TrimSpace(val) != "" {
+				return strings.TrimSpace(val)
+			}
+		}
+		return ""
+	}
+	firstInt := func(keys ...string) int {
+		for _, key := range keys {
+			switch v := args[key].(type) {
+			case float64:
+				return int(v)
+			case string:
+				if n, err := strconv.Atoi(v); err == nil {
+					return n
+				}
+			}
+		}
+		return 0
+	}
+
+	switch name {
+	case "head":
+		path := firstString(pathKeys...)
+		if path == "" {
+			return models.ToolFunction{}, false
+		}
+		lines := firstInt("lines", "n", "count")
+		if lines <= 0 {
+			lines = 20
+		}
+		return buildBash(fmt.Sprintf("head -n %d %s", lines, strconv.Quote(path)))
+	case "tail":
+		path := firstString(pathKeys...)
+		if path == "" {
+			return models.ToolFunction{}, false
+		}
+		lines := firstInt("lines", "n", "count")
+		if lines <= 0 {
+			lines = 20
+		}
+		return buildBash(fmt.Sprintf("tail -n %d %s", lines, strconv.Quote(path)))
+	case "cat":
+		path := firstString(pathKeys...)
+		if path == "" {
+			return models.ToolFunction{}, false
+		}
+		return buildBash(fmt.Sprintf("cat %s", strconv.Quote(path)))
+	case "ls":
+		path := firstString("path", "dir", "directory")
+		if path == "" {
+			path = "."
+		}
+		return buildBash(fmt.Sprintf("ls -la %s", strconv.Quote(path)))
+	case "pwd":
+		return buildBash("pwd")
+	}
+
+	return models.ToolFunction{}, false
 }
 
 /**

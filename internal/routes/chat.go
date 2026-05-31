@@ -835,13 +835,13 @@ func handleChatCompletions(c *gin.Context) {
 		c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(initialBytes)))
 		c.Writer.Flush()
 
-		processStream(c, bodyReader, completionID, targetModel, payload.ConversationID, query)
+		processStream(c, bodyReader, completionID, targetModel, payload.ConversationID, query, input.Tools)
 	} else {
-		processNonStream(c, bodyReader, completionID, targetModel, cacheKey, payload.ConversationID, query)
+		processNonStream(c, bodyReader, completionID, targetModel, cacheKey, payload.ConversationID, query, input.Tools)
 	}
 }
 
-func processStream(c *gin.Context, body io.Reader, completionID, model string, userID string, query string) {
+func processStream(c *gin.Context, body io.Reader, completionID, model string, userID string, query string, availableTools []models.Tool) {
 	// Use a very large buffer for the reader to handle massive SSE events
 	reader := bufio.NewReaderSize(body, 16*1024*1024) // 16MB buffer
 	
@@ -901,6 +901,7 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 
 	// End of stream
 	toolCallStr, toolCalls := utils.ParseToolCalls(fullText.String())
+	toolCalls = utils.NormalizeToolCalls(toolCalls, availableTools)
 	_ = toolCallStr
 	finishReason := "stop"
 	if len(toolCalls) > 0 {
@@ -928,7 +929,7 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 	c.Writer.Flush()
 }
 
-func processNonStream(c *gin.Context, body io.Reader, completionID, model string, cacheKey string, userID string, query string) {
+func processNonStream(c *gin.Context, body io.Reader, completionID, model string, cacheKey string, userID string, query string, availableTools []models.Tool) {
 	respBody, _ := io.ReadAll(body)
 	events := strings.Split(string(respBody), "\n\n")
 
@@ -966,6 +967,7 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 	}
 
 	cleanText, toolCalls := utils.ParseToolCalls(fullText.String())
+	toolCalls = utils.NormalizeToolCalls(toolCalls, availableTools)
 	
 	finishReason := "stop"
 	if len(toolCalls) > 0 {
