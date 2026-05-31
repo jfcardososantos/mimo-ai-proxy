@@ -307,11 +307,11 @@ func ValidateAuthInput(rawCookie string, token string, userID string, ph string)
 func GetSelectedAuth() (models.Auth, error) {
 	stored, err := LoadStoredAuth()
 	if err == nil {
+		if cleanEnvValue(stored.ServiceToken) != "" || cleanEnvValue(stored.UserID) != "" || cleanEnvValue(stored.XiaomiChatbot) != "" {
+			return buildAuth(stored.ServiceToken, stored.UserID, stored.XiaomiChatbot, stored.XiaomiCookie)
+		}
 		if cleanEnvValue(stored.XiaomiCookie) != "" {
 			return buildAuth("", "", "", stored.XiaomiCookie)
-		}
-		if cleanEnvValue(stored.ServiceToken) != "" || cleanEnvValue(stored.UserID) != "" || cleanEnvValue(stored.XiaomiChatbot) != "" {
-			return buildAuth(stored.ServiceToken, stored.UserID, stored.XiaomiChatbot, "")
 		}
 	}
 
