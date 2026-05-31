@@ -983,15 +983,19 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 		}
 	}
 
-	// End of stream
-	toolCallStr, toolCalls := utils.ParseToolCalls(fullText.String())
-	toolCalls = utils.NormalizeToolCalls(toolCalls, availableTools)
-	terminalText, toolCalls := utils.ExtractTerminalToolContent(toolCalls)
-	if terminalText != "" {
-		fullText.Reset()
-		fullText.WriteString(terminalText)
+	// Only interpret tool-call syntax when the client explicitly provided tools.
+	var toolCalls []models.ToolCall
+	if len(availableTools) > 0 {
+		toolCallStr, parsedToolCalls := utils.ParseToolCalls(fullText.String())
+		parsedToolCalls = utils.NormalizeToolCalls(parsedToolCalls, availableTools)
+		terminalText, filteredToolCalls := utils.ExtractTerminalToolContent(parsedToolCalls)
+		if terminalText != "" {
+			fullText.Reset()
+			fullText.WriteString(terminalText)
+		}
+		_ = toolCallStr
+		toolCalls = filteredToolCalls
 	}
-	_ = toolCallStr
 	finishReason := "stop"
 	if len(toolCalls) > 0 {
 		finishReason = "tool_calls"
@@ -1076,15 +1080,21 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 		}
 	}
 
-	cleanText, toolCalls := utils.ParseToolCalls(fullText.String())
-	toolCalls = utils.NormalizeToolCalls(toolCalls, availableTools)
-	terminalText, toolCalls := utils.ExtractTerminalToolContent(toolCalls)
-	if terminalText != "" {
-		if strings.TrimSpace(cleanText) != "" {
-			cleanText = strings.TrimSpace(cleanText) + "\n\n" + terminalText
-		} else {
-			cleanText = terminalText
+	cleanText := strings.TrimSpace(fullText.String())
+	var toolCalls []models.ToolCall
+	if len(availableTools) > 0 {
+		parsedText, parsedToolCalls := utils.ParseToolCalls(fullText.String())
+		parsedToolCalls = utils.NormalizeToolCalls(parsedToolCalls, availableTools)
+		terminalText, filteredToolCalls := utils.ExtractTerminalToolContent(parsedToolCalls)
+		cleanText = parsedText
+		if terminalText != "" {
+			if strings.TrimSpace(cleanText) != "" {
+				cleanText = strings.TrimSpace(cleanText) + "\n\n" + terminalText
+			} else {
+				cleanText = terminalText
+			}
 		}
+		toolCalls = filteredToolCalls
 	}
 
 	finishReason := "stop"
