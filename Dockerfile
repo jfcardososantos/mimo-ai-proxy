@@ -23,10 +23,34 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mimoproxy main.go
 # Final stage
 FROM alpine:latest
 
+ARG SERVICE_TOKEN
+ARG SERVICE_TOKENS
+ARG USER_ID
+ARG USER_IDS
+ARG XIAOMI_CHATBOT_PH
+ARG XIAOMI_CHATBOT_PHS
+ARG XIAOMI_COOKIE
+ARG XIAOMI_COOKIE_RAW
+ARG API_KEY
+ARG CORS_ORIGIN
+ARG PORT=3000
+
 # Install CA certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /app
+
+ENV SERVICE_TOKEN=$SERVICE_TOKEN \
+    SERVICE_TOKENS=$SERVICE_TOKENS \
+    USER_ID=$USER_ID \
+    USER_IDS=$USER_IDS \
+    XIAOMI_CHATBOT_PH=$XIAOMI_CHATBOT_PH \
+    XIAOMI_CHATBOT_PHS=$XIAOMI_CHATBOT_PHS \
+    XIAOMI_COOKIE=$XIAOMI_COOKIE \
+    XIAOMI_COOKIE_RAW=$XIAOMI_COOKIE_RAW \
+    API_KEY=$API_KEY \
+    CORS_ORIGIN=$CORS_ORIGIN \
+    PORT=$PORT
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data && chmod 777 /app/data
@@ -35,8 +59,6 @@ RUN mkdir -p /app/data && chmod 777 /app/data
 COPY --from=builder /app/mimoproxy .
 # Copy templates for the dashboard
 COPY --from=builder /app/templates ./templates
-# Copy .env.example as template if needed, though we expect .env to be mounted
-COPY .env.example .env
 
 EXPOSE 3000
 
