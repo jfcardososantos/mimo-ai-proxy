@@ -927,7 +927,6 @@ func handleChatCompletions(c *gin.Context) {
 func processStream(c *gin.Context, body io.Reader, completionID, model string, userID string, query string, availableTools []models.Tool, legacyCompletions bool) {
 	// Use a very large buffer for the reader to handle massive SSE events
 	reader := bufio.NewReaderSize(body, 16*1024*1024) // 16MB buffer
-	suppressTextStreaming := false
 	
 	var inThinking bool
 	var inToolCall bool
@@ -940,96 +939,39 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 	var usage models.Usage
 
 	var eventType string
-	var dataBuffer strings.Builder
 
 	for {
 		line, err := reader.ReadString('\n')
-		if err != nil && line == "" {
+		if err != nil {
 			if err != io.EOF {
 				fmt.Printf("Reader error: %v\n", err)
 			}
 			break
 		}
 		
-		trimmedLine := strings.TrimSpace(line)
-		if trimmedLine == "" {
-			// Dispatch event
-			if dataBuffer.Len() > 0 {
-					processEvent(c, eventType, dataBuffer.String(), completionID, model, true, suppressTextStreaming, legacyCompletions, &inThinking, &inToolCall, &sentToolCallName, nil, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
-				dataBuffer.Reset()
-				eventType = ""
-			}
-			if err != nil {
-				break
-			}
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
 
-		if strings.HasPrefix(trimmedLine, "event:") {
-			eventType = strings.TrimSpace(trimmedLine[6:])
-		} else if strings.HasPrefix(trimmedLine, "data:") {
-			if dataBuffer.Len() > 0 {
-				dataBuffer.WriteString("\n")
-			}
-			dataBuffer.WriteString(strings.TrimSpace(trimmedLine[5:]))
+		if strings.HasPrefix(line, "event:") {
+			eventType = strings.TrimSpace(line[6:])
+			continue
 		}
-		
-		if err != nil {
-			// Last line without newline
-			if dataBuffer.Len() > 0 {
-				processEvent(c, eventType, dataBuffer.String(), completionID, model, true, suppressTextStreaming, legacyCompletions, &inThinking, &inToolCall, &sentToolCallName, nil, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
-			}
-			break
+		if strings.HasPrefix(line, "data:") {
+			dataStr := strings.TrimSpace(line[5:])
+			processEvent(c, eventType, dataStr, completionID, model, true, legacyCompletions, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
+			eventType = ""
 		}
 	}
 
-	if inToolCall && toolCallBuffer.Len() > 0 {
-		fullText.WriteString("<tool_call>")
-		fullText.WriteString(toolCallBuffer.String())
-		fullText.WriteString("</tool_call>")
-		inToolCall = false
-		toolCallBuffer.Reset()
-	}
-
-	// Only interpret tool-call syntax when the client explicitly provided tools.
 	var toolCalls []models.ToolCall
 	if len(availableTools) > 0 {
-		toolCallStr, parsedToolCalls := utils.ParseToolCalls(fullText.String())
-		parsedToolCalls = utils.NormalizeToolCalls(parsedToolCalls, availableTools)
-		terminalText, filteredToolCalls := utils.ExtractTerminalToolContent(parsedToolCalls)
-		if terminalText != "" {
-			fullText.Reset()
-			fullText.WriteString(terminalText)
-		}
-		_ = toolCallStr
-		toolCalls = filteredToolCalls
+		_, toolCalls = utils.ParseToolCalls(fullText.String())
 	}
 	finishReason := "stop"
 	if len(toolCalls) > 0 {
-		if !legacyCompletions {
-			chunk := utils.CreateChatCompletionChunk(completionID, "", model, nil, "", nil, toolCalls)
-			b, _ := json.Marshal(chunk)
-			c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
-			c.Writer.Flush()
-		}
 		finishReason = "tool_calls"
-	} else if suppressTextStreaming {
-		content := strings.TrimSpace(fullText.String())
-		reasoning := strings.TrimSpace(reasoningText.String())
-		if content != "" || reasoning != "" {
-			if legacyCompletions {
-				combined := content
-				if combined == "" {
-					combined = reasoning
-				}
-				writeLegacyCompletionChunk(c, completionID, model, combined, nil, nil)
-			} else {
-				chunk := utils.CreateChatCompletionChunk(completionID, content, model, nil, reasoning, nil, nil)
-				b, _ := json.Marshal(chunk)
-				c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
-			}
-			c.Writer.Flush()
-		}
 	}
 
 	// Ensure usage is at least estimated if missing
@@ -1042,9 +984,6 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 
 	// Save assistant message to local history
 	services.SaveMessage(userID, "asst_"+completionID, "assistant", fullText.String())
-
-	// Update failure statistics
-	updateConversationFailStats(userID, fullText.String())
 
 	if legacyCompletions {
 		writeLegacyCompletionChunk(c, completionID, model, "", &finishReason, &usage)
@@ -1077,46 +1016,23 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 		}
 		lines := strings.Split(event, "\n")
 		var eventType string
-		var dataBuffer strings.Builder
+		var dataStr string
 		for _, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "event:") {
-				eventType = strings.TrimSpace(trimmed[6:])
-			} else if strings.HasPrefix(trimmed, "data:") {
-				if dataBuffer.Len() > 0 {
-					dataBuffer.WriteString("\n")
-				}
-				dataBuffer.WriteString(strings.TrimSpace(trimmed[5:]))
+			if strings.HasPrefix(line, "event:") {
+				eventType = strings.TrimSpace(line[6:])
+			} else if strings.HasPrefix(line, "data:") {
+				dataStr = strings.TrimSpace(line[5:])
 			}
 		}
-		if dataBuffer.Len() > 0 {
-			processEvent(c, eventType, dataBuffer.String(), completionID, model, false, false, legacyCompletions, &inThinking, &inToolCall, &sentToolCallName, nil, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
+		if dataStr != "" {
+			processEvent(c, eventType, dataStr, completionID, model, false, legacyCompletions, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
 		}
-	}
-
-	if inToolCall && toolCallBuffer.Len() > 0 {
-		fullText.WriteString("<tool_call>")
-		fullText.WriteString(toolCallBuffer.String())
-		fullText.WriteString("</tool_call>")
-		inToolCall = false
-		toolCallBuffer.Reset()
 	}
 
 	cleanText := strings.TrimSpace(fullText.String())
 	var toolCalls []models.ToolCall
 	if len(availableTools) > 0 {
-		parsedText, parsedToolCalls := utils.ParseToolCalls(fullText.String())
-		parsedToolCalls = utils.NormalizeToolCalls(parsedToolCalls, availableTools)
-		terminalText, filteredToolCalls := utils.ExtractTerminalToolContent(parsedToolCalls)
-		cleanText = parsedText
-		if terminalText != "" {
-			if strings.TrimSpace(cleanText) != "" {
-				cleanText = strings.TrimSpace(cleanText) + "\n\n" + terminalText
-			} else {
-				cleanText = terminalText
-			}
-		}
-		toolCalls = filteredToolCalls
+		cleanText, toolCalls = utils.ParseToolCalls(fullText.String())
 	}
 
 	finishReason := "stop"
@@ -1191,9 +1107,6 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 	// Save assistant message to local history
 	services.SaveMessage(userID, "asst_"+completionID, "assistant", fullText.String())
 
-	// Update failure statistics
-	updateConversationFailStats(userID, fullText.String())
-
 	if legacyCompletions {
 		legacyResponse := models.CompletionResponse{
 			ID:      "cmpl-" + completionID,
@@ -1221,34 +1134,12 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 }
 
 var (
-	reToolName       = regexp.MustCompile(`"name":\s*"([^"]+)"`)
-	reToolNameAlt    = regexp.MustCompile(`<(\w+)>`)
-	reToolArgsStart  = regexp.MustCompile(`[{\["tfn\d]`)
-	reTrailingBrace  = regexp.MustCompile(`\s*}$`)
-	reAltTrailingTag = regexp.MustCompile(`\s*</\w+>$`)
+	reToolName      = regexp.MustCompile(`"name":\s*"([^"]+)"`)
+	reToolArgsStart = regexp.MustCompile(`[{\["tfn\d]`)
+	reTrailingBrace = regexp.MustCompile(`\s*}$`)
 )
 
-func processEvent(c *gin.Context, eventType, dataStr, completionID, model string, isStreaming bool, suppressTextStreaming bool, legacyCompletions bool, inThinking, inToolCall, sentToolCallName, streamedToolCall *bool, currentToolID *string, toolCallIndex *int, toolCallBuffer, fullText, reasoningText *strings.Builder, usage *models.Usage) {
-	writeStreamText := func(text string, reasoning bool) {
-		if !isStreaming || suppressTextStreaming || text == "" {
-			return
-		}
-		if legacyCompletions {
-			writeLegacyCompletionChunk(c, completionID, model, text, nil, nil)
-		} else {
-			reasoningTextChunk := ""
-			contentText := text
-			if reasoning {
-				reasoningTextChunk = text
-				contentText = ""
-			}
-			chunk := utils.CreateChatCompletionChunk(completionID, contentText, model, nil, reasoningTextChunk, nil, nil)
-			b, _ := json.Marshal(chunk)
-			c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
-		}
-		c.Writer.Flush()
-	}
-
+func processEvent(c *gin.Context, eventType, dataStr, completionID, model string, isStreaming bool, legacyCompletions bool, inThinking, inToolCall, sentToolCallName *bool, currentToolID *string, toolCallIndex *int, toolCallBuffer, fullText, reasoningText *strings.Builder, usage *models.Usage) {
 	if eventType == "usage" {
 		var u struct {
 			PromptTokens     int `json:"promptTokens"`
@@ -1294,12 +1185,22 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 			if endIdx != -1 {
 				text := remaining[:endIdx]
 				reasoningText.WriteString(text)
-				writeStreamText(text, true)
+				if isStreaming {
+					chunk := utils.CreateChatCompletionChunk(completionID, "", model, nil, text, nil, nil)
+					b, _ := json.Marshal(chunk)
+					c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
+					c.Writer.Flush()
+				}
 				*inThinking = false
 				remaining = remaining[endIdx+8:]
 			} else {
 				reasoningText.WriteString(remaining)
-				writeStreamText(remaining, true)
+				if isStreaming {
+					chunk := utils.CreateChatCompletionChunk(completionID, "", model, nil, remaining, nil, nil)
+					b, _ := json.Marshal(chunk)
+					c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
+					c.Writer.Flush()
+				}
 				remaining = ""
 			}
 		} else if *inToolCall {
@@ -1311,43 +1212,17 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 
 			toolCallBuffer.WriteString(contentToProcess)
 
-			// For compatibility, we buffer tool calls and emit one complete tool_calls chunk at end.
-			if false && isStreaming && !legacyCompletions {
+			if isStreaming && !legacyCompletions {
 				if !*sentToolCallName {
 					bufferStr := toolCallBuffer.String()
 					nameMatch := reToolName.FindStringSubmatch(bufferStr)
 					argsStartIdx := strings.Index(bufferStr, "\"arguments\":")
-					
-					// Try alternate format if JSON format not found
-					isAltFormat := false
-					name := ""
-					initialArgs := ""
-					
 					if len(nameMatch) > 1 && argsStartIdx != -1 {
-						name = nameMatch[1]
+						name := nameMatch[1]
 						afterArgs := bufferStr[argsStartIdx+12:]
 						firstValIdx := reToolArgsStart.FindStringIndex(afterArgs)
-						if firstValIdx != nil {
-							initialArgs = strings.TrimSpace(afterArgs[firstValIdx[0]:])
-						}
-					} else {
-						nameMatchAlt := reToolNameAlt.FindStringSubmatch(bufferStr)
-						if len(nameMatchAlt) > 1 {
-							name = nameMatchAlt[1]
-							isAltFormat = true
-							tagEndIdx := strings.Index(bufferStr, ">")
-							if tagEndIdx != -1 {
-								initialArgs = strings.TrimSpace(bufferStr[tagEndIdx+1:])
-							}
-						}
-					}
-
-					if name != "" {
 						*currentToolID = "call_" + utils.GenerateID()
 						*sentToolCallName = true
-						if streamedToolCall != nil {
-							*streamedToolCall = true
-						}
 
 						initialToolCalls := []models.ToolCall{
 							{
@@ -1364,15 +1239,11 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 						b, _ := json.Marshal(chunk)
 						c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
 
-						if initialArgs != "" {
+						if firstValIdx != nil {
+							initialArgs := strings.TrimSpace(afterArgs[firstValIdx[0]:])
 							if endIdx != -1 {
-								if isAltFormat {
-									initialArgs = reAltTrailingTag.ReplaceAllString(initialArgs, "")
-								} else {
-									initialArgs = reTrailingBrace.ReplaceAllString(initialArgs, "")
-								}
+								initialArgs = reTrailingBrace.ReplaceAllString(initialArgs, "")
 							}
-							
 							if initialArgs != "" {
 								argChunk := []models.ToolCall{
 									{
@@ -1392,14 +1263,9 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 				} else {
 					delta := contentToProcess
 					if endIdx != -1 {
-						// Clean up trailing braces or tags
 						delta = reTrailingBrace.ReplaceAllString(strings.TrimSpace(delta), "")
-						delta = reAltTrailingTag.ReplaceAllString(delta, "")
 					}
 					if delta != "" {
-						if streamedToolCall != nil {
-							*streamedToolCall = true
-						}
 						argChunk := []models.ToolCall{
 							{
 								Index: *toolCallIndex,
@@ -1435,19 +1301,34 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 			if thinkStartIdx != -1 && (toolStartIdx == -1 || thinkStartIdx < toolStartIdx) {
 				text := remaining[:thinkStartIdx]
 				fullText.WriteString(text)
-				writeStreamText(text, false)
+				if isStreaming && text != "" {
+					chunk := utils.CreateChatCompletionChunk(completionID, text, model, nil, "", nil, nil)
+					b, _ := json.Marshal(chunk)
+					c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
+					c.Writer.Flush()
+				}
 				*inThinking = true
 				remaining = remaining[thinkStartIdx+7:]
 			} else if toolStartIdx != -1 {
 				text := remaining[:toolStartIdx]
 				fullText.WriteString(text)
-				writeStreamText(text, false)
+				if isStreaming && text != "" {
+					chunk := utils.CreateChatCompletionChunk(completionID, text, model, nil, "", nil, nil)
+					b, _ := json.Marshal(chunk)
+					c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
+					c.Writer.Flush()
+				}
 				*inToolCall = true
 				toolCallBuffer.Reset()
 				remaining = remaining[toolStartIdx+11:]
 			} else {
 				fullText.WriteString(remaining)
-				writeStreamText(remaining, false)
+				if isStreaming {
+					chunk := utils.CreateChatCompletionChunk(completionID, remaining, model, nil, "", nil, nil)
+					b, _ := json.Marshal(chunk)
+					c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
+					c.Writer.Flush()
+				}
 				remaining = ""
 			}
 		}
