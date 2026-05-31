@@ -367,7 +367,8 @@ func handleFileUpload(c *gin.Context) {
 
 	auth, err := services.GetSelectedAuth()
 	if err != nil {
-		utils.SendError(c, http.StatusInternalServerError, "Invalid Xiaomi auth configuration", "server_error", map[string]interface{}{"details": err.Error()})
+		fmt.Printf("Invalid Xiaomi auth configuration during file upload: %v\n", err)
+		utils.SendError(c, http.StatusInternalServerError, "Invalid Xiaomi auth configuration", "server_error", nil)
 		return
 	}
 	result, err := services.UploadToXiaomi(auth, file.Filename, fileData, mediaType)
@@ -510,7 +511,8 @@ func handleChatCompletions(c *gin.Context) {
 	// Automatic Media Upload
 	currentAuth, err := services.GetSelectedAuth()
 	if err != nil {
-		utils.SendError(c, http.StatusInternalServerError, "Invalid Xiaomi auth configuration", "server_error", map[string]interface{}{"details": err.Error()})
+		fmt.Printf("Invalid Xiaomi auth configuration during automatic media upload: %v\n", err)
+		utils.SendError(c, http.StatusInternalServerError, "Invalid Xiaomi auth configuration", "server_error", nil)
 		return
 	}
 	autoMedias := processAutoUploads(input.Messages, currentAuth)
@@ -759,7 +761,8 @@ func handleChatCompletions(c *gin.Context) {
 	for i := 0; i < maxRetries; i++ {
 		auth, err = services.GetSelectedAuth()
 		if err != nil {
-			utils.SendError(c, http.StatusInternalServerError, "Invalid Xiaomi auth configuration", "server_error", map[string]interface{}{"details": err.Error()})
+			fmt.Printf("Invalid Xiaomi auth configuration during chat request: %v\n", err)
+			utils.SendError(c, http.StatusInternalServerError, "Invalid Xiaomi auth configuration", "server_error", nil)
 			return
 		}
 		url := fmt.Sprintf("https://aistudio.xiaomimimo.com/open-apis/bot/chat?xiaomichatbot_ph=%s", auth.Ph)
