@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"mimoproxy/internal/models"
 	"net/http"
 	"net/url"
@@ -306,62 +305,20 @@ func ValidateAuthInput(rawCookie string, token string, userID string, ph string)
 }
 
 func GetSelectedAuth() (models.Auth, error) {
-	rawCookie := cleanEnvValue(os.Getenv("XIAOMI_COOKIE"))
-	if rawCookie == "" {
-		rawCookie = cleanEnvValue(os.Getenv("XIAOMI_COOKIE_RAW"))
-	}
-	if rawCookie != "" {
-		return buildAuth("", "", "", rawCookie)
-	}
-
-	stored, err := LoadStoredAuth()
-	if err == nil {
-		if cleanEnvValue(stored.XiaomiCookie) != "" {
-			return buildAuth("", "", "", stored.XiaomiCookie)
-		}
-		if cleanEnvValue(stored.ServiceToken) != "" || cleanEnvValue(stored.UserID) != "" || cleanEnvValue(stored.XiaomiChatbot) != "" {
-			return buildAuth(stored.ServiceToken, stored.UserID, stored.XiaomiChatbot, "")
-		}
-	}
-
-	serviceTokensStr := os.Getenv("SERVICE_TOKENS")
-	if serviceTokensStr == "" {
-		serviceTokensStr = os.Getenv("SERVICE_TOKEN")
-	}
-	tokens := splitCSVEnv(serviceTokensStr)
-
-	userIdsStr := os.Getenv("USER_IDS")
-	if userIdsStr == "" {
-		userIdsStr = os.Getenv("USER_ID")
-	}
-	userIds := splitCSVEnv(userIdsStr)
-
-	phsStr := os.Getenv("XIAOMI_CHATBOT_PHS")
-	if phsStr == "" {
-		phsStr = os.Getenv("XIAOMI_CHATBOT_PH")
-	}
-	phs := splitCSVEnv(phsStr)
+	token := cleanEnvValue(os.Getenv("SERVICE_TOKEN"))
+	userID := cleanEnvValue(os.Getenv("USER_ID"))
+	ph := cleanEnvValue(os.Getenv("XIAOMI_CHATBOT_PH"))
 
 	switch {
-	case len(tokens) == 0:
-		return models.Auth{}, errors.New("SERVICE_TOKEN or SERVICE_TOKENS is not configured")
-	case len(userIds) == 0:
-		return models.Auth{}, errors.New("USER_ID or USER_IDS is not configured")
-	case len(phs) == 0:
-		return models.Auth{}, errors.New("XIAOMI_CHATBOT_PH or XIAOMI_CHATBOT_PHS is not configured")
+	case token == "":
+		return models.Auth{}, errors.New("SERVICE_TOKEN is not configured")
+	case userID == "":
+		return models.Auth{}, errors.New("USER_ID is not configured")
+	case ph == "":
+		return models.Auth{}, errors.New("XIAOMI_CHATBOT_PH is not configured")
 	}
 
-	if len(tokens) != len(userIds) || len(tokens) != len(phs) {
-		return models.Auth{}, fmt.Errorf(
-			"credential list size mismatch: SERVICE_TOKENS=%d USER_IDS=%d XIAOMI_CHATBOT_PHS=%d",
-			len(tokens), len(userIds), len(phs),
-		)
-	}
-
-	rand.Seed(time.Now().UnixNano())
-	index := rand.Intn(len(tokens))
-
-	return buildAuth(tokens[index], userIds[index], phs[index], "")
+	return buildAuth(token, userID, ph, "")
 }
 
 func ExtractText(content interface{}, stripArtifacts bool) string {

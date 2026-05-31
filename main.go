@@ -51,18 +51,10 @@ func errString(err error) string {
 }
 
 func detectAuthSource(stored services.StoredAuth, storedErr error) string {
-	if strings.TrimSpace(os.Getenv("XIAOMI_COOKIE")) != "" ||
-		strings.TrimSpace(os.Getenv("XIAOMI_COOKIE_RAW")) != "" ||
-		strings.TrimSpace(os.Getenv("SERVICE_TOKEN")) != "" ||
-		strings.TrimSpace(os.Getenv("SERVICE_TOKENS")) != "" ||
+	if strings.TrimSpace(os.Getenv("SERVICE_TOKEN")) != "" ||
 		strings.TrimSpace(os.Getenv("USER_ID")) != "" ||
-		strings.TrimSpace(os.Getenv("USER_IDS")) != "" ||
-		strings.TrimSpace(os.Getenv("XIAOMI_CHATBOT_PH")) != "" ||
-		strings.TrimSpace(os.Getenv("XIAOMI_CHATBOT_PHS")) != "" {
+		strings.TrimSpace(os.Getenv("XIAOMI_CHATBOT_PH")) != "" {
 		return "environment"
-	}
-	if storedErr == nil && (stored.XiaomiCookie != "" || stored.ServiceToken != "" || stored.UserID != "" || stored.XiaomiChatbot != "") {
-		return "data/auth.json"
 	}
 	return "none"
 }

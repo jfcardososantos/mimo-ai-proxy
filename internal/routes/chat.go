@@ -744,16 +744,8 @@ func handleChatCompletions(c *gin.Context) {
 		payload.ConversationID = utils.GenerateID()
 	}
 
-	// Retry logic
-	tokensStr := os.Getenv("SERVICE_TOKENS")
-	if tokensStr == "" {
-		tokensStr = os.Getenv("SERVICE_TOKEN")
-	}
-	tokens := strings.Split(tokensStr, ",")
-	maxRetries := len(tokens)
-	if maxRetries > 3 {
-		maxRetries = 3
-	}
+	// Retry logic for transient upstream failures using the configured env credentials.
+	maxRetries := 3
 
 	var resp *http.Response
 	var auth models.Auth
