@@ -269,6 +269,40 @@ func handleGetHistory(c *gin.Context) {
 	})
 }
 
+func buildRecentQuery(messages []models.Message, systemContent string, toolInstructions string, maxMessages int) string {
+	if maxMessages <= 0 {
+		maxMessages = 1
+	}
+
+	start := len(messages) - maxMessages
+	if start < 0 {
+		start = 0
+	}
+
+	var processedMessages []string
+	for i := start; i < len(messages); i++ {
+		if messages[i].Role == "system" {
+			continue
+		}
+		formatted := utils.FormatMessageForMiMo(messages[i])
+		if strings.TrimSpace(formatted) != "" {
+			processedMessages = append(processedMessages, formatted)
+		}
+	}
+
+	body := strings.Join(processedMessages, "\n\n")
+	switch {
+	case systemContent != "" && toolInstructions != "":
+		return systemContent + toolInstructions + "\n\n" + body
+	case systemContent != "":
+		return systemContent + "\n\n" + body
+	case toolInstructions != "":
+		return strings.TrimSpace(toolInstructions) + "\n\n" + body
+	default:
+		return body
+	}
+}
+
 func handleChatCompletions(c *gin.Context) {
 	completionID := utils.GenerateID()
 
@@ -437,10 +471,6 @@ func handleChatCompletions(c *gin.Context) {
 			}
 		}
 
-		lastMessage := input.Messages[len(input.Messages)-1]
-		lastMessageText := utils.FormatMessageForMiMo(lastMessage)
-		services.SaveMessage(convID, "user_"+utils.GenerateID(), "user", lastMessageText)
-
 		var systemContent string
 		for _, m := range input.Messages {
 			if m.Role == "system" {
@@ -449,7 +479,17 @@ func handleChatCompletions(c *gin.Context) {
 			}
 		}
 
-		if systemContent != "" {
+		lastMessage := input.Messages[len(input.Messages)-1]
+		lastMessageText := utils.FormatMessageForMiMo(lastMessage)
+		saveRole := lastMessage.Role
+		if saveRole == "" {
+			saveRole = "user"
+		}
+		services.SaveMessage(convID, saveRole+"_"+utils.GenerateID(), saveRole, lastMessageText)
+
+		if lastMessage.Role == "tool" || len(input.Tools) > 0 {
+			query = buildRecentQuery(input.Messages, systemContent, toolInstructions, 6)
+		} else if systemContent != "" {
 			query = fmt.Sprintf("%s%s\n\n%s", systemContent, toolInstructions, lastMessageText)
 		} else if toolInstructions != "" {
 			query = fmt.Sprintf("System: %s\n\n%s", strings.TrimSpace(toolInstructions), lastMessageText)
