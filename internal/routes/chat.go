@@ -844,6 +844,7 @@ func handleChatCompletions(c *gin.Context) {
 func processStream(c *gin.Context, body io.Reader, completionID, model string, userID string, query string, availableTools []models.Tool) {
 	// Use a very large buffer for the reader to handle massive SSE events
 	reader := bufio.NewReaderSize(body, 16*1024*1024) // 16MB buffer
+	suppressTextStreaming := len(availableTools) > 0
 	
 	var inThinking bool
 	var inToolCall bool
@@ -871,7 +872,7 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 		if trimmedLine == "" {
 			// Dispatch event
 			if dataBuffer.Len() > 0 {
-				processEvent(c, eventType, dataBuffer.String(), completionID, model, true, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
+				processEvent(c, eventType, dataBuffer.String(), completionID, model, true, suppressTextStreaming, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
 				dataBuffer.Reset()
 				eventType = ""
 			}
@@ -893,7 +894,7 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 		if err != nil {
 			// Last line without newline
 			if dataBuffer.Len() > 0 {
-				processEvent(c, eventType, dataBuffer.String(), completionID, model, true, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
+				processEvent(c, eventType, dataBuffer.String(), completionID, model, true, suppressTextStreaming, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
 			}
 			break
 		}
@@ -911,6 +912,15 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 	finishReason := "stop"
 	if len(toolCalls) > 0 {
 		finishReason = "tool_calls"
+	} else if suppressTextStreaming {
+		content := strings.TrimSpace(fullText.String())
+		reasoning := strings.TrimSpace(reasoningText.String())
+		if content != "" || reasoning != "" {
+			chunk := utils.CreateChatCompletionChunk(completionID, content, model, nil, reasoning, nil, nil)
+			b, _ := json.Marshal(chunk)
+			c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
+			c.Writer.Flush()
+		}
 	}
 
 	// Ensure usage is at least estimated if missing
@@ -967,7 +977,7 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 			}
 		}
 		if dataBuffer.Len() > 0 {
-			processEvent(c, eventType, dataBuffer.String(), completionID, model, false, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
+			processEvent(c, eventType, dataBuffer.String(), completionID, model, false, false, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
 		}
 	}
 
@@ -985,6 +995,8 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 	finishReason := "stop"
 	if len(toolCalls) > 0 {
 		finishReason = "tool_calls"
+		cleanText = ""
+		reasoningText.Reset()
 		// If multi-tool and we have a user ID, store the rest in cache
 		if userID != "" && len(toolCalls) > 1 {
 			services.GlobalCache.Set("pending_tools_"+userID, toolCalls[1:], 10*time.Minute)
@@ -1068,7 +1080,7 @@ var (
 	reAltTrailingTag = regexp.MustCompile(`\s*</\w+>$`)
 )
 
-func processEvent(c *gin.Context, eventType, dataStr, completionID, model string, isStreaming bool, inThinking, inToolCall, sentToolCallName *bool, currentToolID *string, toolCallIndex *int, toolCallBuffer, fullText, reasoningText *strings.Builder, usage *models.Usage) {
+func processEvent(c *gin.Context, eventType, dataStr, completionID, model string, isStreaming bool, suppressTextStreaming bool, inThinking, inToolCall, sentToolCallName *bool, currentToolID *string, toolCallIndex *int, toolCallBuffer, fullText, reasoningText *strings.Builder, usage *models.Usage) {
 	if eventType == "usage" {
 		var u struct {
 			PromptTokens     int `json:"promptTokens"`
@@ -1114,7 +1126,7 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 			if endIdx != -1 {
 				text := remaining[:endIdx]
 				reasoningText.WriteString(text)
-				if isStreaming {
+				if isStreaming && !suppressTextStreaming {
 					chunk := utils.CreateChatCompletionChunk(completionID, "", model, nil, text, nil, nil)
 					b, _ := json.Marshal(chunk)
 					c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
@@ -1124,7 +1136,7 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 				remaining = remaining[endIdx+8:]
 			} else {
 				reasoningText.WriteString(remaining)
-				if isStreaming {
+				if isStreaming && !suppressTextStreaming {
 					chunk := utils.CreateChatCompletionChunk(completionID, "", model, nil, remaining, nil, nil)
 					b, _ := json.Marshal(chunk)
 					c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
@@ -1258,7 +1270,7 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 			if thinkStartIdx != -1 && (toolStartIdx == -1 || thinkStartIdx < toolStartIdx) {
 				text := remaining[:thinkStartIdx]
 				fullText.WriteString(text)
-				if isStreaming && text != "" {
+				if isStreaming && !suppressTextStreaming && text != "" {
 					chunk := utils.CreateChatCompletionChunk(completionID, text, model, nil, "", nil, nil)
 					b, _ := json.Marshal(chunk)
 					c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
@@ -1269,7 +1281,7 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 			} else if toolStartIdx != -1 {
 				text := remaining[:toolStartIdx]
 				fullText.WriteString(text)
-				if isStreaming && text != "" {
+				if isStreaming && !suppressTextStreaming && text != "" {
 					chunk := utils.CreateChatCompletionChunk(completionID, text, model, nil, "", nil, nil)
 					b, _ := json.Marshal(chunk)
 					c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
@@ -1280,7 +1292,7 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 				remaining = remaining[toolStartIdx+11:]
 			} else {
 				fullText.WriteString(remaining)
-				if isStreaming {
+				if isStreaming && !suppressTextStreaming {
 					chunk := utils.CreateChatCompletionChunk(completionID, remaining, model, nil, "", nil, nil)
 					b, _ := json.Marshal(chunk)
 					c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
