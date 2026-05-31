@@ -12,6 +12,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -218,37 +219,149 @@ func cleanEnvValue(s string) string {
 	return s
 }
 
-func GetSelectedAuth() models.Auth {
+func splitCSVEnv(raw string) []string {
+	parts := strings.Split(raw, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		cleaned := cleanEnvValue(part)
+		if cleaned != "" {
+			result = append(result, cleaned)
+		}
+	}
+	return result
+}
+
+func extractCookieValue(raw string, key string) string {
+	raw = cleanEnvValue(raw)
+	if raw == "" {
+		return ""
+	}
+
+	pattern := fmt.Sprintf(`(?:^|[;\s])%s="?([^";\s]+)"?`, regexp.QuoteMeta(key))
+	re := regexp.MustCompile(pattern)
+	matches := re.FindStringSubmatch(raw)
+	if len(matches) == 2 {
+		return cleanEnvValue(matches[1])
+	}
+
+	if strings.HasPrefix(raw, key+"=") {
+		return cleanEnvValue(strings.TrimPrefix(raw, key+"="))
+	}
+
+	return ""
+}
+
+func buildAuth(token string, userID string, ph string, rawCookie string) (models.Auth, error) {
+	token = cleanEnvValue(token)
+	userID = cleanEnvValue(userID)
+	ph = cleanEnvValue(ph)
+	rawCookie = strings.TrimSpace(rawCookie)
+
+	if extracted := extractCookieValue(token, "serviceToken"); extracted != "" {
+		token = extracted
+	}
+	if extracted := extractCookieValue(userID, "userId"); extracted != "" {
+		userID = extracted
+	}
+	if extracted := extractCookieValue(ph, "xiaomichatbot_ph"); extracted != "" {
+		ph = extracted
+	}
+
+	if rawCookie != "" {
+		if token == "" {
+			token = extractCookieValue(rawCookie, "serviceToken")
+		}
+		if userID == "" {
+			userID = extractCookieValue(rawCookie, "userId")
+		}
+		if ph == "" {
+			ph = extractCookieValue(rawCookie, "xiaomichatbot_ph")
+		}
+	}
+
+	switch {
+	case token == "":
+		return models.Auth{}, errors.New("missing SERVICE_TOKEN/serviceToken cookie")
+	case userID == "":
+		return models.Auth{}, errors.New("missing USER_ID/userId cookie")
+	case ph == "":
+		return models.Auth{}, errors.New("missing XIAOMI_CHATBOT_PH/xiaomichatbot_ph cookie")
+	}
+
+	cookie := rawCookie
+	if cookie == "" {
+		cookie = fmt.Sprintf("serviceToken=\"%s\"; userId=%s; xiaomichatbot_ph=\"%s\"", token, userID, ph)
+	}
+
+	return models.Auth{
+		Cookie: cookie,
+		Ph:     ph,
+		Token:  token,
+		UserID: userID,
+	}, nil
+}
+
+func ValidateAuthInput(rawCookie string, token string, userID string, ph string) (models.Auth, error) {
+	return buildAuth(token, userID, ph, rawCookie)
+}
+
+func GetSelectedAuth() (models.Auth, error) {
+	rawCookie := cleanEnvValue(os.Getenv("XIAOMI_COOKIE"))
+	if rawCookie == "" {
+		rawCookie = cleanEnvValue(os.Getenv("XIAOMI_COOKIE_RAW"))
+	}
+	if rawCookie != "" {
+		return buildAuth("", "", "", rawCookie)
+	}
+
+	stored, err := LoadStoredAuth()
+	if err == nil {
+		if cleanEnvValue(stored.XiaomiCookie) != "" {
+			return buildAuth("", "", "", stored.XiaomiCookie)
+		}
+		if cleanEnvValue(stored.ServiceToken) != "" || cleanEnvValue(stored.UserID) != "" || cleanEnvValue(stored.XiaomiChatbot) != "" {
+			return buildAuth(stored.ServiceToken, stored.UserID, stored.XiaomiChatbot, "")
+		}
+	}
+
 	serviceTokensStr := os.Getenv("SERVICE_TOKENS")
 	if serviceTokensStr == "" {
 		serviceTokensStr = os.Getenv("SERVICE_TOKEN")
 	}
-	tokens := strings.Split(serviceTokensStr, ",")
+	tokens := splitCSVEnv(serviceTokensStr)
 
 	userIdsStr := os.Getenv("USER_IDS")
 	if userIdsStr == "" {
 		userIdsStr = os.Getenv("USER_ID")
 	}
-	userIds := strings.Split(userIdsStr, ",")
+	userIds := splitCSVEnv(userIdsStr)
 
 	phsStr := os.Getenv("XIAOMI_CHATBOT_PHS")
 	if phsStr == "" {
 		phsStr = os.Getenv("XIAOMI_CHATBOT_PH")
 	}
-	phs := strings.Split(phsStr, ",")
+	phs := splitCSVEnv(phsStr)
+
+	switch {
+	case len(tokens) == 0:
+		return models.Auth{}, errors.New("SERVICE_TOKEN or SERVICE_TOKENS is not configured")
+	case len(userIds) == 0:
+		return models.Auth{}, errors.New("USER_ID or USER_IDS is not configured")
+	case len(phs) == 0:
+		return models.Auth{}, errors.New("XIAOMI_CHATBOT_PH or XIAOMI_CHATBOT_PHS is not configured")
+	}
+
+	if len(tokens) != len(userIds) || len(tokens) != len(phs) {
+		return models.Auth{}, fmt.Errorf(
+			"credential list size mismatch: SERVICE_TOKENS=%d USER_IDS=%d XIAOMI_CHATBOT_PHS=%d",
+			len(tokens), len(userIds), len(phs),
+		)
+	}
 
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(len(tokens))
 
-	selectedToken := cleanEnvValue(tokens[index])
-	selectedUserId := cleanEnvValue(userIds[index%len(userIds)])
-	selectedPh := cleanEnvValue(phs[index%len(phs)])
-
-	return models.Auth{
-		Cookie: fmt.Sprintf("serviceToken=\"%s\"; userId=%s; xiaomichatbot_ph=\"%s\"", selectedToken, selectedUserId, selectedPh),
-		Ph:     selectedPh,
-		Token:  selectedToken,
-	}
+	return buildAuth(tokens[index], userIds[index], phs[index], "")
 }
 
 func ExtractText(content interface{}, stripArtifacts bool) string {

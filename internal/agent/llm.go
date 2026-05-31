@@ -28,7 +28,10 @@ func CallLLM(systemPrompt string, userPrompt string, forceJSON bool) (string, er
 		userPrompt += "\n\nCRITICAL: Return ONLY valid JSON."
 	}
 
-	auth := services.GetSelectedAuth()
+	auth, err := services.GetSelectedAuth()
+	if err != nil {
+		return "", err
+	}
 	
 	payload := models.MimoPayload{
 		MsgID:          utils.GenerateID(),

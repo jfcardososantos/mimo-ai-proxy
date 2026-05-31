@@ -10,6 +10,7 @@ type Auth struct {
 	Cookie string
 	Ph     string
 	Token  string
+	UserID string
 }
 
 type MultiMedia struct {

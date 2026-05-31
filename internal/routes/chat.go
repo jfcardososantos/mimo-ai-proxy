@@ -84,12 +84,16 @@ func RegisterChatRoutes(r *gin.Engine, authMiddleware gin.HandlerFunc) {
 }
 
 func handleModels(c *gin.Context) {
+	auth, err := services.GetSelectedAuth()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid Xiaomi auth configuration", "details": err.Error()})
+		return
+	}
+
 	if cached, found := services.GlobalCache.Get("models_list"); found {
 		c.JSON(http.StatusOK, cached)
 		return
 	}
-
-	auth := services.GetSelectedAuth()
 	headers := services.GetOfficialHeaders(auth, nil)
 
 	req, _ := http.NewRequest("GET", "https://aistudio.xiaomimimo.com/open-apis/bot/config", nil)
@@ -131,7 +135,12 @@ func handleModels(c *gin.Context) {
 }
 
 func handleDirectProxy(c *gin.Context) {
-	auth := services.GetSelectedAuth()
+	auth, err := services.GetSelectedAuth()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid Xiaomi auth configuration", "details": err.Error()})
+		return
+	}
+
 	url := fmt.Sprintf("https://aistudio.xiaomimimo.com/open-apis/bot/chat?xiaomichatbot_ph=%s", auth.Ph)
 
 	body, _ := io.ReadAll(c.Request.Body)
@@ -172,7 +181,11 @@ func handleGetHistory(c *gin.Context) {
 	var err error
 
 	if syncParam {
-		auth := services.GetSelectedAuth()
+		auth, err := services.GetSelectedAuth()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid Xiaomi auth configuration", "details": err.Error()})
+			return
+		}
 		history, err := services.GetConversationHistory(auth, conversationID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch history", "details": err.Error()})
@@ -207,7 +220,11 @@ func handleGetHistory(c *gin.Context) {
 
 		// If empty local, fallback to sync automatically
 		if len(messages) == 0 {
-			auth := services.GetSelectedAuth()
+			auth, err := services.GetSelectedAuth()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid Xiaomi auth configuration", "details": err.Error()})
+				return
+			}
 			history, _ := services.GetConversationHistory(auth, conversationID)
 			for _, item := range history {
 				messages = append(messages, models.Message{Role: "user", Content: item.InputInfo.Query})
@@ -348,7 +365,11 @@ func handleFileUpload(c *gin.Context) {
 		mediaType = "video"
 	}
 
-	auth := services.GetSelectedAuth()
+	auth, err := services.GetSelectedAuth()
+	if err != nil {
+		utils.SendError(c, http.StatusInternalServerError, "Invalid Xiaomi auth configuration", "server_error", map[string]interface{}{"details": err.Error()})
+		return
+	}
 	result, err := services.UploadToXiaomi(auth, file.Filename, fileData, mediaType)
 	if err != nil {
 		utils.SendError(c, http.StatusInternalServerError, "Failed to upload to Xiaomi", "server_error", nil)
@@ -487,7 +508,11 @@ func handleChatCompletions(c *gin.Context) {
 	var sessionKey string
 	
 	// Automatic Media Upload
-	currentAuth := services.GetSelectedAuth()
+	currentAuth, err := services.GetSelectedAuth()
+	if err != nil {
+		utils.SendError(c, http.StatusInternalServerError, "Invalid Xiaomi auth configuration", "server_error", map[string]interface{}{"details": err.Error()})
+		return
+	}
 	autoMedias := processAutoUploads(input.Messages, currentAuth)
 	if len(autoMedias) > 0 {
 		input.MultiMedias = append(input.MultiMedias, autoMedias...)
@@ -732,7 +757,11 @@ func handleChatCompletions(c *gin.Context) {
 	var auth models.Auth
 
 	for i := 0; i < maxRetries; i++ {
-		auth = services.GetSelectedAuth()
+		auth, err = services.GetSelectedAuth()
+		if err != nil {
+			utils.SendError(c, http.StatusInternalServerError, "Invalid Xiaomi auth configuration", "server_error", map[string]interface{}{"details": err.Error()})
+			return
+		}
 		url := fmt.Sprintf("https://aistudio.xiaomimimo.com/open-apis/bot/chat?xiaomichatbot_ph=%s", auth.Ph)
 		
 		payloadBytes, _ := json.Marshal(payload)

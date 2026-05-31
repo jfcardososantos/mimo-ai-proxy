@@ -12,11 +12,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"mimoproxy/internal/middleware"
 	"mimoproxy/internal/routes"
 	"mimoproxy/internal/services"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -31,6 +33,64 @@ var startTime time.Time
 
 func init() {
 	startTime = time.Now()
+}
+
+func loginURL() string {
+	return "https://aistudio.xiaomimimo.com/"
+}
+
+func qrCodeURL(target string) string {
+	return "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" + url.QueryEscape(target)
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func detectAuthSource(stored services.StoredAuth, storedErr error) string {
+	if strings.TrimSpace(os.Getenv("XIAOMI_COOKIE")) != "" ||
+		strings.TrimSpace(os.Getenv("XIAOMI_COOKIE_RAW")) != "" ||
+		strings.TrimSpace(os.Getenv("SERVICE_TOKEN")) != "" ||
+		strings.TrimSpace(os.Getenv("SERVICE_TOKENS")) != "" ||
+		strings.TrimSpace(os.Getenv("USER_ID")) != "" ||
+		strings.TrimSpace(os.Getenv("USER_IDS")) != "" ||
+		strings.TrimSpace(os.Getenv("XIAOMI_CHATBOT_PH")) != "" ||
+		strings.TrimSpace(os.Getenv("XIAOMI_CHATBOT_PHS")) != "" {
+		return "environment"
+	}
+	if storedErr == nil && (stored.XiaomiCookie != "" || stored.ServiceToken != "" || stored.UserID != "" || stored.XiaomiChatbot != "") {
+		return "data/auth.json"
+	}
+	return "none"
+}
+
+func validateSetupAccess(c *gin.Context) bool {
+	apiKey := strings.TrimSpace(os.Getenv("API_KEY"))
+	if apiKey == "" {
+		return true
+	}
+
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+	if strings.HasPrefix(authHeader, "Bearer ") && strings.TrimPrefix(authHeader, "Bearer ") == apiKey {
+		return true
+	}
+
+	if strings.TrimSpace(c.PostForm("api_key")) == apiKey {
+		return true
+	}
+
+	if strings.TrimSpace(c.Query("api_key")) == apiKey {
+		return true
+	}
+
+	c.JSON(http.StatusUnauthorized, gin.H{
+		"error":   "Missing or invalid API key",
+		"details": "Use Authorization: Bearer <API_KEY> or submit api_key in the setup form.",
+	})
+	return false
 }
 
 func main() {
@@ -110,46 +170,148 @@ func main() {
 		}
 
 		modelListHtml := "<li>API models unavailable</li>"
-		auth := services.GetSelectedAuth()
-		headers := services.GetOfficialHeaders(auth, nil)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		req, _ := http.NewRequestWithContext(ctx, "GET", "https://aistudio.xiaomimimo.com/open-apis/bot/config", nil)
-		for k, v := range headers {
-			req.Header.Set(k, v)
-		}
-		resp, err := services.GlobalHTTPClient.Do(req)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			var result struct {
-				Code int `json:"code"`
-				Data struct {
-					ModelConfigList []struct {
-						Model   string `json:"model"`
-						EnIntro string `json:"enIntro"`
-					} `json:"modelConfigList"`
-				} `json:"data"`
+		storedAuth, storedAuthErr := services.LoadStoredAuth()
+		authSource := detectAuthSource(storedAuth, storedAuthErr)
+
+		auth, err := services.GetSelectedAuth()
+		if err != nil {
+			modelListHtml = fmt.Sprintf("<li>Auth config invalid: %s</li>", err.Error())
+		} else {
+			headers := services.GetOfficialHeaders(auth, nil)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			req, _ := http.NewRequestWithContext(ctx, "GET", "https://aistudio.xiaomimimo.com/open-apis/bot/config", nil)
+			for k, v := range headers {
+				req.Header.Set(k, v)
 			}
-			if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.Code == 0 {
-				var modelItems []string
-				for _, m := range result.Data.ModelConfigList {
-					modelItems = append(modelItems, fmt.Sprintf("<li><code>%s</code> - %s</li>", m.Model, m.EnIntro))
+			resp, err := services.GlobalHTTPClient.Do(req)
+			if err == nil && resp.StatusCode == http.StatusOK {
+				var result struct {
+					Code int `json:"code"`
+					Data struct {
+						ModelConfigList []struct {
+							Model   string `json:"model"`
+							EnIntro string `json:"enIntro"`
+						} `json:"modelConfigList"`
+					} `json:"data"`
 				}
-				modelListHtml = strings.Join(modelItems, "")
+				if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.Code == 0 {
+					var modelItems []string
+					for _, m := range result.Data.ModelConfigList {
+						modelItems = append(modelItems, fmt.Sprintf("<li><code>%s</code> - %s</li>", m.Model, m.EnIntro))
+					}
+					modelListHtml = strings.Join(modelItems, "")
+				}
 			}
 		}
 
 		c.HTML(http.StatusOK, "dashboard.html", gin.H{
-			"Uptime":     fmt.Sprintf("%.0f", time.Since(startTime).Seconds()),
-			"ModelList":  modelListHtml,
-			"AvgLatency": avgTimeStr,
-			"Stats":      statsHtml,
+			"Uptime":      fmt.Sprintf("%.0f", time.Since(startTime).Seconds()),
+			"ModelList":   modelListHtml,
+			"AvgLatency":  avgTimeStr,
+			"Stats":       statsHtml,
+			"LoginURL":    loginURL(),
+			"QRCodeURL":   qrCodeURL(loginURL()),
+			"AuthSource":  authSource,
+			"AuthError":   errString(err),
+			"AuthStore":   services.AuthStorePathForDisplay(),
+			"StoredAuth":  storedAuth,
+			"StoredError": errString(storedAuthErr),
 		})
 	})
 
-	r.GET("/health", func(c *gin.Context) {
+	r.GET("/auth/status", func(c *gin.Context) {
+		auth, authErr := services.GetSelectedAuth()
+		stored, storedErr := services.LoadStoredAuth()
 		c.JSON(http.StatusOK, gin.H{
-			"status": "ok",
-			"uptime": time.Since(startTime).Seconds(),
+			"configured":       authErr == nil,
+			"authError":        errString(authErr),
+			"authSource":       detectAuthSource(stored, storedErr),
+			"storePath":        services.AuthStorePathForDisplay(),
+			"storeError":       errString(storedErr),
+			"storedHasCookie":  stored.XiaomiCookie != "",
+			"storedHasToken":   stored.ServiceToken != "",
+			"storedHasUserID":  stored.UserID != "",
+			"storedHasChatbot": stored.XiaomiChatbot != "",
+			"selectedPh":       auth.Ph,
+		})
+	})
+
+	r.POST("/auth/import", func(c *gin.Context) {
+		if !validateSetupAccess(c) {
+			return
+		}
+
+		var payload struct {
+			XiaomiCookie  string `json:"xiaomi_cookie" form:"xiaomi_cookie"`
+			ServiceToken  string `json:"service_token" form:"service_token"`
+			UserID        string `json:"user_id" form:"user_id"`
+			XiaomiChatbot string `json:"xiaomi_chatbot_ph" form:"xiaomi_chatbot_ph"`
+		}
+
+		if strings.Contains(c.GetHeader("Content-Type"), "application/json") {
+			body, _ := io.ReadAll(c.Request.Body)
+			if len(strings.TrimSpace(string(body))) > 0 {
+				if err := json.Unmarshal(body, &payload); err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON payload", "details": err.Error()})
+					return
+				}
+			}
+		} else if err := c.ShouldBind(&payload); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid form payload", "details": err.Error()})
+			return
+		}
+
+		auth, err := services.ValidateAuthInput(payload.XiaomiCookie, payload.ServiceToken, payload.UserID, payload.XiaomiChatbot)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Xiaomi credentials", "details": err.Error()})
+			return
+		}
+
+		stored := services.StoredAuth{
+			XiaomiCookie:  strings.TrimSpace(payload.XiaomiCookie),
+			ServiceToken:  strings.TrimSpace(payload.ServiceToken),
+			UserID:        strings.TrimSpace(payload.UserID),
+			XiaomiChatbot: strings.TrimSpace(payload.XiaomiChatbot),
+		}
+		if err := services.SaveStoredAuth(stored); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist credentials", "details": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"saved":      true,
+			"authSource": "data/auth.json",
+			"selectedPh": auth.Ph,
+			"storePath":  services.AuthStorePathForDisplay(),
+		})
+	})
+
+	r.POST("/auth/clear", func(c *gin.Context) {
+		if !validateSetupAccess(c) {
+			return
+		}
+		if err := services.ClearStoredAuth(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clear stored credentials", "details": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"cleared": true})
+	})
+
+	r.GET("/health", func(c *gin.Context) {
+		_, authErr := services.GetSelectedAuth()
+		authStatus := "ok"
+		authDetails := ""
+		if authErr != nil {
+			authStatus = "invalid"
+			authDetails = authErr.Error()
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":     "ok",
+			"uptime":     time.Since(startTime).Seconds(),
+			"authStatus": authStatus,
+			"authError":  authDetails,
 		})
 	})
 

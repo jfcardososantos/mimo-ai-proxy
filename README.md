@@ -42,6 +42,11 @@ O **Mimo AI Proxy** não é apenas uma camada de tradução; é um gateway compl
    CORS_ORIGIN="*"
    ```
 
+   Observações importantes:
+   - `SERVICE_TOKENS`, `USER_IDS` e `XIAOMI_CHATBOT_PHS` precisam ter a mesma quantidade de itens e na mesma ordem.
+   - Se você copiou um cookie bruto do navegador, pode usar `XIAOMI_COOKIE` em vez de separar os 3 campos manualmente.
+   - O proxy agora aceita valores no formato `serviceToken=...`, `userId=...` e `xiaomichatbot_ph=...`, além dos valores puros.
+
 ## Como usar
 
 ### Docker (Recomendado)
@@ -65,6 +70,19 @@ curl http://localhost:3000/v1/chat/completions \
     "stream": true
   }'
 ```
+
+## Setup Assistido
+
+Ao abrir `/`, o proxy mostra:
+- status atual da autenticação;
+- QR code para abrir `https://aistudio.xiaomimimo.com/`;
+- formulário para salvar `XIAOMI_COOKIE` bruto ou os campos `serviceToken`, `userId` e `xiaomichatbot_ph`.
+
+As credenciais salvas pela interface ficam em `data/auth.json` por padrão.
+
+Limite importante:
+- o proxy **não consegue capturar automaticamente** os cookies do login feito no domínio da Xiaomi apenas por QR ou redirecionamento;
+- por isso, o fluxo suportado é login no AI Studio e depois importação manual do cookie ou dos 3 campos para o proxy.
 
 ## Arquitetura de Dados
 

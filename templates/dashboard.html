@@ -11,34 +11,110 @@
     <head>
         <title>Xiaomi Mimo Proxy (Go)</title>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 2rem; background: #f4f4f9; }
-            .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-            h1 { color: #333; margin-top: 0; }
-            code { background: #eee; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+            body { font-family: Georgia, "Times New Roman", serif; line-height: 1.6; max-width: 1100px; margin: 0 auto; padding: 2rem; background: linear-gradient(135deg, #f7f3ea 0%, #ebe4d8 100%); color: #1f2937; }
+            .card { background: rgba(255,255,255,0.9); padding: 2rem; border-radius: 18px; box-shadow: 0 18px 40px rgba(80,60,30,0.12); border: 1px solid rgba(120, 98, 59, 0.14); backdrop-filter: blur(6px); }
+            .hero { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.5rem; align-items: start; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem; }
+            h1, h2, h3 { color: #2f2419; margin-top: 0; }
+            h1 { font-size: 2.2rem; line-height: 1.1; }
+            code, textarea, input { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+            code { background: #f4ead6; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
             .status { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #22c55e; margin-right: 8px; }
+            .status.warn { background: #f59e0b; }
+            .muted { color: #6b7280; }
+            .pill { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; background: #efe3c6; color: #6a4f22; font-size: 0.9rem; }
+            .section { background: rgba(255,255,255,0.7); border: 1px solid rgba(120, 98, 59, 0.12); border-radius: 14px; padding: 1rem 1.1rem; }
+            .qr { width: 220px; height: 220px; border-radius: 12px; background: white; border: 1px solid #e5d7bc; }
+            .qr-wrap { text-align: center; }
             ul { padding-left: 1.2rem; }
+            textarea, input { width: 100%; box-sizing: border-box; border: 1px solid #d8c7a8; border-radius: 10px; padding: 0.8rem; background: #fffdf8; margin-bottom: 0.8rem; }
+            textarea { min-height: 120px; resize: vertical; }
+            button { background: #7c4f18; color: white; border: none; border-radius: 999px; padding: 0.8rem 1.2rem; cursor: pointer; }
+            button.secondary { background: #e9dcc3; color: #5e4626; }
+            .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+            .note { font-size: 0.95rem; background: #fbf5e8; border-left: 4px solid #c08b36; padding: 0.9rem 1rem; border-radius: 8px; }
+            @media (max-width: 860px) {
+                body { padding: 1rem; }
+                .hero, .grid { grid-template-columns: 1fr; }
+                .qr { width: 200px; height: 200px; }
+            }
         </style>
     </head>
     <body>
         <div class="card">
-            <h1><span class="status"></span>Mimo AI Proxy (Go)</h1>
-            <p>Uptime: <strong>{{.Uptime}}s</strong></p>
-            <hr/>
-            <h3>Available Endpoints:</h3>
-            <ul>
-                <li><code>POST /v1/chat/completions</code> - OpenAI Compatible</li>
-                <li><code>GET /v1/models</code> - Dynamic Model List</li>
-                <li><code>GET /health</code> - System Health</li>
-            </ul>
-            <hr/>
-            <h3>Active Models:</h3>
-            <ul>{{.ModelList | safe}}</ul>
-            <hr/>
-            <h3>Performance:</h3>
-            <p>Avg Upstream Latency: <strong>{{.AvgLatency}}</strong></p>
-            <hr/>
-            <h3>Token Usage Stats:</h3>
-            <ul>{{.Stats | safe}}</ul>
+            <div class="hero">
+                <div>
+                    <div class="pill">Fork-ready setup</div>
+                    <h1><span class="status {{if .AuthError}}warn{{end}}"></span>Mimo AI Proxy</h1>
+                    <p>Uptime: <strong>{{.Uptime}}s</strong></p>
+                    <p>Auth source: <strong>{{.AuthSource}}</strong></p>
+                    <p>Auth store path: <code>{{.AuthStore}}</code></p>
+                    {{if .AuthError}}
+                    <div class="note">
+                        <strong>Auth problem:</strong> {{.AuthError}}
+                    </div>
+                    {{else}}
+                    <div class="note">
+                        <strong>Auth loaded successfully.</strong> If Xiaomi later returns <code>401</code>, the stored session most likely expired or the cookie fields came from different logins.
+                    </div>
+                    {{end}}
+                    <div class="actions">
+                        <a href="{{.LoginURL}}" target="_blank" rel="noreferrer"><button type="button">Open Xiaomi AI Studio</button></a>
+                        <a href="/auth/status"><button class="secondary" type="button">View Auth Status JSON</button></a>
+                    </div>
+                </div>
+                <div class="qr-wrap section">
+                    <img class="qr" src="{{.QRCodeURL}}" alt="QR code for Xiaomi AI Studio login"/>
+                    <p><strong>Login QR</strong></p>
+                    <p class="muted">Scan to open <code>{{.LoginURL}}</code>. The proxy cannot automatically read Xiaomi cookies from that browser session.</p>
+                </div>
+            </div>
+
+            <div class="grid">
+                <div class="section">
+                    <h3>Import Credentials</h3>
+                    <p class="muted">Paste the raw Xiaomi cookie or the three fields below. This saves credentials to <code>{{.AuthStore}}</code>.</p>
+                    <form method="post" action="/auth/import">
+                        <input type="password" name="api_key" placeholder="API_KEY, if configured"/>
+                        <textarea name="xiaomi_cookie" placeholder='XIAOMI_COOKIE: serviceToken="..."; userId=...; xiaomichatbot_ph="..."'></textarea>
+                        <input type="text" name="service_token" placeholder="serviceToken or SERVICE_TOKEN"/>
+                        <input type="text" name="user_id" placeholder="userId or USER_ID"/>
+                        <input type="text" name="xiaomi_chatbot_ph" placeholder="xiaomichatbot_ph or XIAOMI_CHATBOT_PH"/>
+                        <div class="actions">
+                            <button type="submit">Save Credentials</button>
+                        </div>
+                    </form>
+                    <form method="post" action="/auth/clear">
+                        <input type="password" name="api_key" placeholder="API_KEY to clear, if configured"/>
+                        <div class="actions">
+                            <button class="secondary" type="submit">Clear Saved Credentials</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="section">
+                    <h3>Available Endpoints</h3>
+                    <ul>
+                        <li><code>POST /v1/chat/completions</code> - OpenAI compatible</li>
+                        <li><code>GET /v1/models</code> - Dynamic model list</li>
+                        <li><code>GET /health</code> - Process and auth health</li>
+                        <li><code>GET /auth/status</code> - Stored auth diagnostics</li>
+                    </ul>
+                    <h3>Active Models</h3>
+                    <ul>{{.ModelList | safe}}</ul>
+                </div>
+            </div>
+
+            <div class="grid">
+                <div class="section">
+                    <h3>Performance</h3>
+                    <p>Avg upstream latency: <strong>{{.AvgLatency}}</strong></p>
+                </div>
+                <div class="section">
+                    <h3>Token Usage Stats</h3>
+                    <ul>{{.Stats | safe}}</ul>
+                </div>
+            </div>
         </div>
     </body>
 </html>
