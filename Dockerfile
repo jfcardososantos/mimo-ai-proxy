@@ -49,6 +49,8 @@ RUN mkdir -p /app/data && chmod 777 /app/data
 COPY --from=builder /app/mimoproxy .
 # Copy templates for the dashboard
 COPY --from=builder /app/templates ./templates
+# Copy browser extension assets for download packaging
+COPY --from=builder /app/extension ./extension
 
 EXPOSE 3000
 

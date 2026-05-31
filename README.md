@@ -21,8 +21,8 @@ O **Mimo AI Proxy** não é apenas uma camada de tradução; é um gateway compl
   - **Sequential Tool Calling**: Orquestração de múltiplas chamadas de ferramentas em sequência.
   - **Web Search**: Ativação dinâmica de busca na web via modelo ou parâmetro de requisição.
 - **Infraestrutura e Operações**:
-  - **Load Balancing & Account Rotation**: Rotação automática de múltiplas contas Xiaomi para alta disponibilidade.
   - **Live Dashboard**: Interface web integrada para monitoramento de uptime, latência upstream e consumo de tokens por conta.
+  - **Browser Extension Login Flow**: Extensão Chrome/Edge para capturar a sessão autenticada da Xiaomi AI Studio e salvar no proxy.
   - **Direct Proxy**: Acesso de baixo nível ao endpoint original da Xiaomi via `/open-apis/bot/chat`.
 
 ## Configuração
@@ -31,10 +31,9 @@ O **Mimo AI Proxy** não é apenas uma camada de tradução; é um gateway compl
 
 2. **Variáveis de Ambiente**: Configure o `.env` (use `[.env.example](.env.example)` como base).
    ```env
-   # Múltiplos valores permitidos para Load Balancing:
-   SERVICE_TOKENS="token1,token2"
-   USER_IDS="id1,id2"
-   XIAOMI_CHATBOT_PHS="ph1,ph2"
+   SERVICE_TOKEN="token"
+   USER_ID="id"
+   XIAOMI_CHATBOT_PH="ph"
    
    # Segurança e Rede:
    PORT=3000
@@ -43,9 +42,9 @@ O **Mimo AI Proxy** não é apenas uma camada de tradução; é um gateway compl
    ```
 
    Observações importantes:
-   - `SERVICE_TOKENS`, `USER_IDS` e `XIAOMI_CHATBOT_PHS` precisam ter a mesma quantidade de itens e na mesma ordem.
-   - Se você copiou um cookie bruto do navegador, pode usar `XIAOMI_COOKIE` em vez de separar os 3 campos manualmente.
-   - O proxy agora aceita valores no formato `serviceToken=...`, `userId=...` e `xiaomichatbot_ph=...`, além dos valores puros.
+   - Se você não quiser manter esses 3 valores manualmente, use a extensão do navegador para importar a sessão logada da Xiaomi.
+   - O proxy também aceita `XIAOMI_COOKIE` bruto e salva sessões importadas em `data/auth.json`.
+   - Os endpoints compatíveis com OpenAI continuam os mesmos, principalmente `POST /v1/chat/completions`.
 
 ## Como usar
 
@@ -76,13 +75,17 @@ curl http://localhost:3000/v1/chat/completions \
 Ao abrir `/`, o proxy mostra:
 - status atual da autenticação;
 - QR code para abrir `https://aistudio.xiaomimimo.com/`;
-- formulário para salvar `XIAOMI_COOKIE` bruto ou os campos `serviceToken`, `userId` e `xiaomichatbot_ph`.
+- download da extensão para importar a sessão autenticada da Xiaomi;
+- formulário alternativo para salvar `XIAOMI_COOKIE` bruto ou os campos `serviceToken`, `userId` e `xiaomichatbot_ph`.
 
 As credenciais salvas pela interface ficam em `data/auth.json` por padrão.
 
-Limite importante:
-- o proxy **não consegue capturar automaticamente** os cookies do login feito no domínio da Xiaomi apenas por QR ou redirecionamento;
-- por isso, o fluxo suportado é login no AI Studio e depois importação manual do cookie ou dos 3 campos para o proxy.
+Fluxo recomendado:
+1. Faça login no Xiaomi AI Studio.
+2. Instale a extensão disponível no dashboard.
+3. Informe a URL do proxy e a `API_KEY`, se existir.
+4. Clique em `Import Xiaomi Session`.
+5. Use normalmente `/v1/chat/completions`, `/v1/models` e os demais endpoints.
 
 ## Arquitetura de Dados
 

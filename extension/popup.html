@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mimo Xiaomi Session Importer</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 16px;
+        width: 360px;
+        font-family: Georgia, "Times New Roman", serif;
+        background: linear-gradient(160deg, #f5efe3 0%, #eadcc4 100%);
+        color: #2f2419;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 20px;
+      }
+      p {
+        margin: 0 0 12px;
+        line-height: 1.4;
+      }
+      label {
+        display: block;
+        margin: 12px 0 6px;
+        font-weight: 700;
+      }
+      input, textarea, button {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+        border-radius: 10px;
+      }
+      input, textarea {
+        padding: 10px 12px;
+        border: 1px solid #cdbb99;
+        background: #fffaf2;
+      }
+      textarea {
+        min-height: 110px;
+        resize: vertical;
+      }
+      button {
+        border: 0;
+        padding: 12px 14px;
+        margin-top: 12px;
+        background: #7c4f18;
+        color: #fff;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #e7d8ba;
+        color: #5a4426;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .status {
+        white-space: pre-wrap;
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.6);
+        border: 1px solid rgba(120, 79, 24, 0.15);
+        min-height: 96px;
+      }
+      .hint {
+        font-size: 13px;
+        color: #5f5a52;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Mimo Xiaomi Session Importer</h1>
+    <p class="hint">Abra o Xiaomi AI Studio logado neste navegador. Depois informe a URL do proxy e importe a sessão.</p>
+
+    <label for="proxyUrl">Proxy URL</label>
+    <input id="proxyUrl" type="url" placeholder="https://seu-proxy.exemplo.com">
+
+    <label for="apiKey">API Key</label>
+    <input id="apiKey" type="password" placeholder="Opcional">
+
+    <div class="row">
+      <button id="openXiaomi" type="button" class="secondary">Open Xiaomi</button>
+      <button id="saveConfig" type="button" class="secondary">Save Config</button>
+    </div>
+
+    <button id="importSession" type="button">Import Xiaomi Session</button>
+
+    <label for="status">Status</label>
+    <textarea id="status" readonly></textarea>
+
+    <script src="popup.js"></script>
+  </body>
+  </html>

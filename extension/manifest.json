@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Mimo Xiaomi Session Importer",
+  "version": "1.0.0",
+  "description": "Captura a sessão autenticada da Xiaomi AI Studio e envia ao Mimo Proxy.",
+  "permissions": [
+    "cookies",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://aistudio.xiaomimimo.com/*",
+    "https://*.xiaomimimo.com/*",
+    "https://account.xiaomi.com/*",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "action": {
+    "default_title": "Mimo Xiaomi Session Importer",
+    "default_popup": "popup.html"
+  }
+}

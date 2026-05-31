@@ -8,6 +8,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -21,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -72,6 +75,55 @@ func maskValue(raw string) gin.H {
 		"startsWith":    func() string { if len(trimmed) >= 4 { return trimmed[:4] }; return trimmed }(),
 		"endsWith":      func() string { if len(trimmed) >= 4 { return trimmed[len(trimmed)-4:] }; return trimmed }(),
 	}
+}
+
+func buildStoredAuth(rawCookie string, token string, userID string, ph string) services.StoredAuth {
+	return services.StoredAuth{
+		XiaomiCookie:  strings.TrimSpace(rawCookie),
+		ServiceToken:  strings.TrimSpace(token),
+		UserID:        strings.TrimSpace(userID),
+		XiaomiChatbot: strings.TrimSpace(ph),
+	}
+}
+
+func zipDirectory(root string) ([]byte, error) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		writer, err := zw.Create(filepath.ToSlash(rel))
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(writer, file)
+		return err
+	})
+	if err != nil {
+		_ = zw.Close()
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func hasEnvAuth() bool {
@@ -270,6 +322,18 @@ func main() {
 		})
 	})
 
+	r.GET("/downloads/mimo-xiaomi-session-extension.zip", func(c *gin.Context) {
+		zipBytes, err := zipDirectory("extension")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to package extension", "details": err.Error()})
+			return
+		}
+
+		c.Header("Content-Type", "application/zip")
+		c.Header("Content-Disposition", `attachment; filename="mimo-xiaomi-session-extension.zip"`)
+		c.Data(http.StatusOK, "application/zip", zipBytes)
+	})
+
 	r.GET("/auth/debug", func(c *gin.Context) {
 		if !validateSetupAccess(c) {
 			return
@@ -310,6 +374,46 @@ func main() {
 		})
 	})
 
+	r.POST("/auth/extension/import", func(c *gin.Context) {
+		if !validateSetupAccess(c) {
+			return
+		}
+
+		var payload struct {
+			ServiceToken  string `json:"serviceToken"`
+			UserID        string `json:"userId"`
+			XiaomiChatbot string `json:"xiaomichatbotPh"`
+			RawCookie     string `json:"rawCookie"`
+			Source        string `json:"source"`
+		}
+
+		if err := c.ShouldBindJSON(&payload); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid extension payload", "details": err.Error()})
+			return
+		}
+
+		auth, err := services.ValidateAuthInput(payload.RawCookie, payload.ServiceToken, payload.UserID, payload.XiaomiChatbot)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Xiaomi session from extension", "details": err.Error()})
+			return
+		}
+
+		stored := buildStoredAuth(payload.RawCookie, auth.Token, auth.UserID, auth.Ph)
+		if err := services.SaveStoredAuth(stored); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist extension session", "details": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"saved":         true,
+			"authSource":    "data/auth.json",
+			"selectedPh":    auth.Ph,
+			"storePath":     services.AuthStorePathForDisplay(),
+			"importedFrom":  payload.Source,
+			"cookiePresent": strings.TrimSpace(payload.RawCookie) != "",
+		})
+	})
+
 	r.POST("/auth/import", func(c *gin.Context) {
 		if !validateSetupAccess(c) {
 			return
@@ -341,12 +445,7 @@ func main() {
 			return
 		}
 
-		stored := services.StoredAuth{
-			XiaomiCookie:  strings.TrimSpace(payload.XiaomiCookie),
-			ServiceToken:  strings.TrimSpace(payload.ServiceToken),
-			UserID:        strings.TrimSpace(payload.UserID),
-			XiaomiChatbot: strings.TrimSpace(payload.XiaomiChatbot),
-		}
+		stored := buildStoredAuth(payload.XiaomiCookie, payload.ServiceToken, payload.UserID, payload.XiaomiChatbot)
 		if err := services.SaveStoredAuth(stored); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist credentials", "details": err.Error()})
 			return
