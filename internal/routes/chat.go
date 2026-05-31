@@ -647,7 +647,7 @@ func handleChatCompletions(c *gin.Context) {
 		
 		// Add a final reminder at the very end of the user's message to ensure strict tool usage
 		if toolInstructions != "" && !strings.Contains(lastMessageText, "SYSTEM REMINDER") {
-			query += "\n\n[SYSTEM REMINDER: If you need to take an action, respond ONLY with a `<tool_call>` block using one exact tool name from the available tools list. If no tool is needed, answer normally in plain text.]"
+			query += "\n\n[SYSTEM REMINDER: If you need to inspect files, search code, run commands, or take any action, respond ONLY with a `<tool_call>` block using one exact tool name from the available tools list. Do NOT narrate intent like 'let me inspect' or 'I'll explore'. If no action is needed, answer normally in plain text.]"
 		}
 	} else if len(input.Messages) <= 1 {
 		lastMessage := input.Messages[len(input.Messages)-1]
@@ -687,7 +687,7 @@ func handleChatCompletions(c *gin.Context) {
 		}
 		
 		if toolInstructions != "" {
-			query += "\n\n[SYSTEM REMINDER: If you need to take an action, respond ONLY with a `<tool_call>` block using one exact tool name from the available tools list. If no tool is needed, answer normally in plain text.]"
+			query += "\n\n[SYSTEM REMINDER: If you need to inspect files, search code, run commands, or take any action, respond ONLY with a `<tool_call>` block using one exact tool name from the available tools list. Do NOT narrate intent like 'let me inspect' or 'I'll explore'. If no action is needed, answer normally in plain text.]"
 		}
 
 		// Only truncate if we exceed the safety limit for payload stability

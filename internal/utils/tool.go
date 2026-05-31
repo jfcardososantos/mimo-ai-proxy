@@ -34,6 +34,9 @@ func FormatToolsAsInstructions(tools []models.Tool) string {
 	sb.WriteString("3. Wait for the tool result before proceeding to the next step.\n")
 	sb.WriteString("4. You MUST use one of the exact tool names listed below. Never invent a new tool name.\n")
 	sb.WriteString("5. If you want shell-style operations like `head`, `cat`, `ls`, `find`, or `sed`, use the `bash` tool if it exists instead of inventing those names as tools.\n\n")
+	sb.WriteString("6. Do NOT say things like 'let me inspect', 'I'll explore', 'first I will check', or describe a future action. If inspection or execution is needed, call a tool immediately.\n")
+	sb.WriteString("7. If tools are available and the task requires reading files, searching code, running commands, or inspecting project structure, prefer a tool call over conversational text.\n")
+	sb.WriteString("8. Only answer in plain text when you are actually done or when no tool is needed.\n\n")
 	sb.WriteString("Available tools:\n")
 
 	for _, tool := range tools {
@@ -439,7 +442,7 @@ func FormatMessageForMiMo(message models.Message) string {
 				}
 			}
 		}
-		return fmt.Sprintf("\n<tool_result>\n%s\n</tool_result>\n\n[SYSTEM REMINDER: If you need to take an action, respond ONLY with a `<tool_call>` block using one exact tool name from the available tools list. If no tool is needed, answer normally in plain text.]\n", contentStr)
+		return fmt.Sprintf("\n<tool_result>\n%s\n</tool_result>\n\n[SYSTEM REMINDER: If you still need to inspect files, run commands, search code, or take any action, respond ONLY with a `<tool_call>` block using one exact tool name from the available tools list. Do NOT narrate intent like 'let me check'. If no action is needed, answer normally in plain text.]\n", contentStr)
 	}
 
 	// Handle normal content and complex parts
