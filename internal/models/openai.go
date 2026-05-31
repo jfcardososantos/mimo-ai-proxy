@@ -77,10 +77,11 @@ type ErrorDetail struct {
 }
 
 type Message struct {
-	Role      string      `json:"role"`
-	Content   interface{} `json:"content"` // can be string or []ContentPart
-	Name      string      `json:"name,omitempty"`
-	ToolCalls []ToolCall  `json:"tool_calls,omitempty"`
+	Role             string      `json:"role"`
+	Content          interface{} `json:"content"` // can be string or []ContentPart
+	ReasoningContent string      `json:"reasoning_content,omitempty"`
+	Name             string      `json:"name,omitempty"`
+	ToolCalls        []ToolCall  `json:"tool_calls,omitempty"`
 }
 
 type ContentPart struct {

@@ -356,18 +356,6 @@ func handleChatCompletions(c *gin.Context) {
 	cacheKey := fmt.Sprintf("req_%x", bodyCopy)
 	fmt.Printf("Incoming request size: %d bytes\n", len(bodyCopy))
 
-	var streamProbe struct {
-		Stream bool `json:"stream"`
-	}
-	_ = json.Unmarshal(bodyCopy, &streamProbe)
-
-	if !streamProbe.Stream {
-		if cached, found := services.GlobalCache.Get(cacheKey); found {
-			c.JSON(http.StatusOK, cached)
-			return
-		}
-	}
-
 	var input struct {
 		Messages          []models.Message `json:"messages"`
 		Model             string           `json:"model"`
@@ -379,9 +367,17 @@ func handleChatCompletions(c *gin.Context) {
 		WebSearch         bool             `json:"web_search"`
 	}
 
-	if err = c.ShouldBindJSON(&input); err != nil {
+	if err = json.Unmarshal(bodyCopy, &input); err != nil {
 		utils.SendError(c, http.StatusBadRequest, "Invalid request body", "invalid_request_error", nil)
 		return
+	}
+
+	// Não cachear agent/tool loops — evita repetir respostas "stop" sem tool_calls.
+	if !input.Stream && len(input.Tools) == 0 {
+		if cached, found := services.GlobalCache.Get(cacheKey); found {
+			c.JSON(http.StatusOK, cached)
+			return
+		}
 	}
 
 	if len(input.Messages) == 0 {
@@ -531,6 +527,13 @@ func handleChatCompletions(c *gin.Context) {
 	}
 
 	enableThinking := !strings.Contains(input.Model, "no-thinking")
+	if len(input.Tools) > 0 {
+		// Com tools, thinking longo costuma gerar só planejamento e finish_reason=stop no Kilo/agent.
+		enableThinking = false
+		if os.Getenv("AGENT_ENABLE_THINKING") == "true" || os.Getenv("AGENT_ENABLE_THINKING") == "1" {
+			enableThinking = !strings.Contains(input.Model, "no-thinking")
+		}
+	}
 	webSearchStatus := "disabled"
 	if utils.ShouldEnableWebSearch(targetModel, input.WebSearch, input.Tools) ||
 		os.Getenv("DEFAULT_WEB_SEARCH") == "true" || os.Getenv("DEFAULT_WEB_SEARCH") == "1" {
@@ -626,7 +629,19 @@ func handleChatCompletions(c *gin.Context) {
 		return
 	}
 
-	processNonStream(c, bodyReader, completionID, targetModel, cacheKey, historyID, query, input.ParallelToolCalls)
+	processNonStream(c, bodyReader, completionID, targetModel, cacheKey, historyID, query, input.ParallelToolCalls, len(input.Tools) == 0)
+}
+
+func assistantTranscript(content, reasoning string) string {
+	reasoning = strings.TrimSpace(reasoning)
+	content = strings.TrimSpace(content)
+	if reasoning == "" {
+		return content
+	}
+	if content == "" {
+		return utils.ThinkingOpenTag + reasoning + utils.ThinkingCloseTag
+	}
+	return utils.ThinkingOpenTag + reasoning + utils.ThinkingCloseTag + "\n" + content
 }
 
 func resolveToolChoice(raw interface{}) string {
@@ -738,12 +753,16 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 		}
 	}
 
-	if inToolCall && toolCallBuffer.Len() > 0 {
-		fullText.WriteString("<tool_call>")
-		fullText.WriteString(toolCallBuffer.String())
-		fullText.WriteString("</tool_call>")
+	if inThinking {
+		inThinking = false
+	}
 
-		if _, parsedToolCalls := utils.ParseToolCalls("<tool_call>" + toolCallBuffer.String() + "</tool_call>"); len(parsedToolCalls) > 0 {
+	if inToolCall && toolCallBuffer.Len() > 0 {
+		fullText.WriteString(utils.ToolCallOpenTag)
+		fullText.WriteString(toolCallBuffer.String())
+		fullText.WriteString(utils.ToolCallCloseTag)
+
+		if _, parsedToolCalls := utils.ParseToolCalls(utils.ToolCallOpenTag + toolCallBuffer.String() + utils.ToolCallCloseTag); len(parsedToolCalls) > 0 {
 			parsedToolCalls = utils.AssignToolCallIndexes(parsedToolCalls)
 			parsedToolCalls[0].Index = toolCallIndex
 			utils.EmitStreamToolCall(c, completionID, model, parsedToolCalls[0])
@@ -766,7 +785,7 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 	}
 	IncrementTokenStat(os.Getenv("SERVICE_TOKEN"), usage.TotalTokens)
 
-	services.SaveMessage(userID, "asst_"+completionID, "assistant", fullText.String())
+	services.SaveMessage(userID, "asst_"+completionID, "assistant", assistantTranscript(fullText.String(), reasoningText.String()))
 
 	finalToolCalls := []models.ToolCall(nil)
 	if finishReason == "tool_calls" {
@@ -803,7 +822,7 @@ func storePendingToolCalls(sessionID string, toolCalls []models.ToolCall) {
 	services.GlobalCache.Set("pending_tools_"+sessionID, toolCalls[1:], 10*time.Minute)
 }
 
-func processNonStream(c *gin.Context, body io.Reader, completionID, model string, cacheKey string, userID string, query string, parallelToolCalls *bool) {
+func processNonStream(c *gin.Context, body io.Reader, completionID, model string, cacheKey string, userID string, query string, parallelToolCalls *bool, allowResponseCache bool) {
 	respBody, _ := io.ReadAll(body)
 	events := strings.Split(string(respBody), "\n\n")
 
@@ -837,10 +856,14 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 		}
 	}
 
+	if inThinking {
+		inThinking = false
+	}
+
 	if inToolCall && toolCallBuffer.Len() > 0 {
-		fullText.WriteString("<tool_call>")
+		fullText.WriteString(utils.ToolCallOpenTag)
 		fullText.WriteString(toolCallBuffer.String())
-		fullText.WriteString("</tool_call>")
+		fullText.WriteString(utils.ToolCallCloseTag)
 	}
 
 	cleanText, toolCalls := utils.ParseToolCalls(fullText.String())
@@ -852,7 +875,6 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 	if len(toolCalls) > 0 {
 		finishReason = "tool_calls"
 		cleanText = ""
-		reasoningText.Reset()
 		storePendingToolCalls(userID, toolCalls)
 	}
 
@@ -897,8 +919,10 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 		Usage: &usage,
 	}
 
-	services.SaveMessage(userID, "asst_"+completionID, "assistant", fullText.String())
-	services.GlobalCache.Set(cacheKey, response, 5*time.Minute)
+	services.SaveMessage(userID, "asst_"+completionID, "assistant", assistantTranscript(fullText.String(), reasoningText.String()))
+	if allowResponseCache {
+		services.GlobalCache.Set(cacheKey, response, 5*time.Minute)
+	}
 	c.JSON(http.StatusOK, response)
 }
 
@@ -944,7 +968,7 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 
 	for len(remaining) > 0 {
 		if *inThinking {
-			endIdx := strings.Index(remaining, "</think>")
+			endIdx := strings.Index(remaining, utils.ThinkingCloseTag)
 			if endIdx != -1 {
 				text := remaining[:endIdx]
 				reasoningText.WriteString(text)
@@ -955,7 +979,7 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 					c.Writer.Flush()
 				}
 				*inThinking = false
-				remaining = remaining[endIdx+8:]
+				remaining = remaining[endIdx+len(utils.ThinkingCloseTag):]
 			} else {
 				reasoningText.WriteString(remaining)
 				if isStreaming {
@@ -970,7 +994,7 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 		}
 
 		if *inToolCall {
-			endIdx := strings.Index(remaining, "</tool_call>")
+			endIdx := strings.Index(remaining, utils.ToolCallCloseTag)
 			contentToProcess := remaining
 			if endIdx != -1 {
 				contentToProcess = remaining[:endIdx]
@@ -998,15 +1022,15 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 				*currentToolID = ""
 				*toolCallIndex++
 				toolCallBuffer.Reset()
-				remaining = remaining[endIdx+12:]
+				remaining = remaining[endIdx+len(utils.ToolCallCloseTag):]
 			} else {
 				remaining = ""
 			}
 			continue
 		}
 
-		thinkStartIdx := strings.Index(remaining, "<think>")
-		toolStartIdx := strings.Index(remaining, "<tool_call>")
+		thinkStartIdx := strings.Index(remaining, utils.ThinkingOpenTag)
+		toolStartIdx := strings.Index(remaining, utils.ToolCallOpenTag)
 
 		if thinkStartIdx != -1 && (toolStartIdx == -1 || thinkStartIdx < toolStartIdx) {
 			text := remaining[:thinkStartIdx]
@@ -1020,7 +1044,7 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 				c.Writer.Flush()
 			}
 			*inThinking = true
-			remaining = remaining[thinkStartIdx+7:]
+			remaining = remaining[thinkStartIdx+len(utils.ThinkingOpenTag):]
 			continue
 		}
 
@@ -1037,7 +1061,7 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 			}
 			*inToolCall = true
 			toolCallBuffer.Reset()
-			remaining = remaining[toolStartIdx+11:]
+			remaining = remaining[toolStartIdx+len(utils.ToolCallOpenTag):]
 			continue
 		}
 

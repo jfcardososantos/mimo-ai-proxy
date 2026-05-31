@@ -46,11 +46,13 @@ func FormatToolsAsInstructionsWithChoice(tools []models.Tool, toolChoice string)
 	if base == "" {
 		return base
 	}
-	if toolChoice == "" || toolChoice == "auto" {
-		return base
-	}
 	var sb strings.Builder
 	sb.WriteString(base)
+	sb.WriteString(agentToolExecutionRules())
+
+	if toolChoice == "" || toolChoice == "auto" {
+		return sb.String()
+	}
 	sb.WriteString("\nTool choice policy: ")
 	sb.WriteString(toolChoice)
 	sb.WriteString(".\n")
@@ -58,6 +60,16 @@ func FormatToolsAsInstructionsWithChoice(tools []models.Tool, toolChoice string)
 		sb.WriteString("You MUST respond with at least one tool call using the XML format above.\n")
 	}
 	return sb.String()
+}
+
+func agentToolExecutionRules() string {
+	return `
+## Agent execution (mandatory)
+- After any thinking/planning, you MUST call tools using the XML format. Never stop with only a plan.
+- Do NOT say you "will" read files or run commands without immediately emitting the matching <tool_call>.
+- Each turn that requires action must include at least one <tool_call>...</tool_call> block.
+- Plain text without tool_call XML is only valid when the task is fully complete and no tools are needed.
+`
 }
 
 // ShouldEnableWebSearch decides when to turn on Xiaomi native web search.
@@ -242,6 +254,10 @@ func ExtractTerminalToolContent(toolCalls []models.ToolCall) (string, []models.T
 // FormatMessageForMiMo mirrors the simpler formatting from the first version.
 func FormatMessageForMiMo(message models.Message) string {
 	var parts []string
+
+	if rc := strings.TrimSpace(message.ReasoningContent); rc != "" {
+		parts = append(parts, ThinkingOpenTag+rc+ThinkingCloseTag)
+	}
 
 	if message.Role == "tool" {
 		contentStr := ""

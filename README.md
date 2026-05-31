@@ -80,6 +80,16 @@ Configure o cliente OpenAI da IDE apontando para `http://localhost:3000/v1` com 
 - Para busca atualizada na web, use `"web_search": true` ou um modelo com `search` no nome.
 - Com `parallel_tool_calls: false`, apenas a primeira ferramenta é retornada por turno; as demais seguem após mensagens `role: tool`.
 
+### Kilo Code (agent para após reasoning)
+
+Se o agente planeja (“vou ler o projeto…”) e para sem executar tools:
+
+1. Com tools, o proxy já desliga thinking por padrão (use `AGENT_ENABLE_THINKING=true` só se quiser reasoning de volta).
+2. Use `stream: true` no provider OpenAI do Kilo.
+3. Confirme que o modelo no Kilo é o mesmo configurado no proxy (ex. `mimo-v2.5-pro`).
+
+O proxy agora preserva `reasoning_content` no histórico (exigido pelo Mimo em multi-turn com tools) e corrige o parse das tags `<think>`.
+
 ## Setup Assistido
 
 Ao abrir `/`, o proxy mostra:
