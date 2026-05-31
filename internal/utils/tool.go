@@ -107,6 +107,38 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 		}
 	}
 
+	if len(toolCalls) == 0 {
+		trimmedText := strings.TrimSpace(text)
+		if idx := strings.LastIndex(trimmedText, `{"name"`); idx != -1 {
+			candidate := strings.TrimSpace(trimmedText[idx:])
+			if strings.HasSuffix(candidate, "}") {
+				var toolCallData struct {
+					Name      string      `json:"name"`
+					Arguments interface{} `json:"arguments"`
+				}
+				if err := json.Unmarshal([]byte(candidate), &toolCallData); err == nil && toolCallData.Name != "" && toolCallData.Arguments != nil {
+					var argsStr string
+					switch v := toolCallData.Arguments.(type) {
+					case string:
+						argsStr = v
+					default:
+						b, _ := json.Marshal(v)
+						argsStr = string(b)
+					}
+					toolCalls = append(toolCalls, models.ToolCall{
+						ID:   "call_" + GenerateID(),
+						Type: "function",
+						Function: models.ToolFunction{
+							Name:      toolCallData.Name,
+							Arguments: argsStr,
+						},
+					})
+					cleanText = strings.TrimSpace(trimmedText[:idx])
+				}
+			}
+		}
+	}
+
 	cleanText = strings.TrimSpace(cleanText)
 	return cleanText, toolCalls
 }

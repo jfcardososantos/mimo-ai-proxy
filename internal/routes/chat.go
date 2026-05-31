@@ -644,6 +644,7 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 	var inThinking bool
 	var inToolCall bool
 	var sentToolCallName bool
+	var emittedToolCall bool
 	var currentToolID string
 	var toolCallIndex int
 	var toolCallBuffer strings.Builder
@@ -694,6 +695,7 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 			b, _ := json.Marshal(chunk)
 			c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
 			c.Writer.Flush()
+			emittedToolCall = true
 		}
 	}
 
@@ -716,7 +718,11 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 
 	services.SaveMessage(userID, "asst_"+completionID, "assistant", fullText.String())
 
-	finalChunk := utils.CreateChatCompletionChunk(completionID, "", model, &finishReason, "", &usage, nil)
+	finalToolCalls := []models.ToolCall(nil)
+	if finishReason == "tool_calls" && !emittedToolCall && len(toolCalls) > 0 {
+		finalToolCalls = toolCalls
+	}
+	finalChunk := utils.CreateChatCompletionChunk(completionID, "", model, &finishReason, "", &usage, finalToolCalls)
 	finalBytes, _ := json.Marshal(finalChunk)
 	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(finalBytes)))
 	c.Writer.WriteString("data: [DONE]\n\n")
