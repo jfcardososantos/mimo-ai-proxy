@@ -38,6 +38,7 @@
             .response { min-height: 220px; white-space: pre-wrap; overflow: auto; background: #2a2118; color: #f8f2e8; border-radius: 12px; padding: 1rem; font-size: 0.9rem; }
             .mini { min-height: 56px; }
             .small { font-size: 0.9rem; }
+            .export-box { min-height: 100px; }
             @media (max-width: 860px) {
                 body { padding: 1rem; }
                 .hero, .grid { grid-template-columns: 1fr; }
@@ -55,6 +56,7 @@
                     <p>Uptime: <strong>{{.Uptime}}s</strong></p>
                     <p>Auth source: <strong>{{.AuthSource}}</strong></p>
                     <p>Auth store path: <code>{{.AuthStore}}</code></p>
+                    <p class="muted small">Para persistir a sessão entre deploys, mantenha <code>{{.AuthStore}}</code> dentro de um volume persistente. Se quiser mudar o local, use <code>AUTH_STORE_PATH</code>.</p>
                     {{if .AuthError}}
                     <div class="note">
                         <strong>Auth problem:</strong> {{.AuthError}}
@@ -112,6 +114,17 @@
                             <button class="secondary" type="submit">Clear Saved Credentials</button>
                         </div>
                     </form>
+                </div>
+
+                <div class="section">
+                    <h3>Export Current Session</h3>
+                    <p class="muted">Use isso para copiar a sessão carregada e jogar no env, evitando reimportar o cookie a cada deploy.</p>
+                    <div class="actions">
+                        <button type="button" onclick="copyAuthExport('rawCookie')">Copy Raw Cookie</button>
+                        <button type="button" class="secondary" onclick="copyAuthExport('env')">Copy Env</button>
+                        <button type="button" class="secondary" onclick="loadAuthExport()">Refresh Export</button>
+                    </div>
+                    <textarea id="authExportBox" class="export-box" readonly>Clique em "Refresh Export" para carregar a sessão atual.</textarea>
                 </div>
 
                 <div class="section">
@@ -193,6 +206,37 @@
 
             function setResponse(text) {
                 document.getElementById("responsePanel").textContent = text;
+            }
+
+            let authExportCache = null;
+
+            async function loadAuthExport() {
+                const headers = buildHeaders();
+                const res = await fetch("/auth/export", { headers });
+                const body = await res.text();
+                if (!res.ok) {
+                    document.getElementById("authExportBox").value = `HTTP ${res.status} ${res.statusText}\n\n${body}`;
+                    authExportCache = null;
+                    return;
+                }
+                authExportCache = JSON.parse(body);
+                document.getElementById("authExportBox").value = authExportCache.env || authExportCache.rawCookie || body;
+            }
+
+            async function copyAuthExport(kind) {
+                if (!authExportCache) {
+                    await loadAuthExport();
+                    if (!authExportCache) {
+                        return;
+                    }
+                }
+                const value = kind === "rawCookie" ? authExportCache.rawCookie : authExportCache.env;
+                if (!value) {
+                    document.getElementById("authExportBox").value = "Nenhum valor disponível para copiar.";
+                    return;
+                }
+                await navigator.clipboard.writeText(value);
+                document.getElementById("authExportBox").value = value;
             }
 
             async function callSimpleRoute(path) {

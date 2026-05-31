@@ -16,6 +16,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"mimoproxy/internal/models"
 	"mimoproxy/internal/middleware"
 	"mimoproxy/internal/routes"
 	"mimoproxy/internal/services"
@@ -84,6 +85,20 @@ func buildStoredAuth(rawCookie string, token string, userID string, ph string) s
 		UserID:        strings.TrimSpace(userID),
 		XiaomiChatbot: strings.TrimSpace(ph),
 	}
+}
+
+func buildRawCookieFromAuth(auth models.Auth) string {
+	if strings.TrimSpace(auth.Cookie) != "" {
+		return strings.TrimSpace(auth.Cookie)
+	}
+	if strings.TrimSpace(auth.Token) == "" || strings.TrimSpace(auth.UserID) == "" || strings.TrimSpace(auth.Ph) == "" {
+		return ""
+	}
+	return fmt.Sprintf(`serviceToken="%s"; userId=%s; xiaomichatbot_ph="%s"`, auth.Token, auth.UserID, auth.Ph)
+}
+
+func buildEnvExport(auth models.Auth) string {
+	return fmt.Sprintf("SERVICE_TOKEN=%s\nUSER_ID=%s\nXIAOMI_CHATBOT_PH=%s", auth.Token, auth.UserID, auth.Ph)
 }
 
 func zipDirectory(root string) ([]byte, error) {
@@ -371,6 +386,27 @@ func main() {
 				"userID": maskValue(auth.UserID),
 				"ph":    maskValue(auth.Ph),
 			},
+		})
+	})
+
+	r.GET("/auth/export", func(c *gin.Context) {
+		if !validateSetupAccess(c) {
+			return
+		}
+
+		stored, storedErr := services.LoadStoredAuth()
+		auth, err := services.GetSelectedAuth()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Auth is not configured", "details": err.Error()})
+			return
+		}
+
+		rawCookie := buildRawCookieFromAuth(auth)
+		c.JSON(http.StatusOK, gin.H{
+			"authSource": detectAuthSource(stored, storedErr),
+			"rawCookie":  rawCookie,
+			"env":        buildEnvExport(auth),
+			"storePath":  services.AuthStorePathForDisplay(),
 		})
 	})
 
