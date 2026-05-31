@@ -48,6 +48,37 @@ async function getCookieByName(name) {
   return fallbackCookies.find((cookie) => cookie.domain.includes("xiaomi")) || null;
 }
 
+async function collectRawCookieJar() {
+  const seen = new Map();
+
+  for (const url of COOKIE_URLS) {
+    const cookies = await chrome.cookies.getAll({ url });
+    for (const cookie of cookies) {
+      if (!cookie || !cookie.name) {
+        continue;
+      }
+      seen.set(cookie.name, cookie.value);
+    }
+  }
+
+  const fallbackCookies = await chrome.cookies.getAll({});
+  for (const cookie of fallbackCookies) {
+    if (!cookie || !cookie.name) {
+      continue;
+    }
+    if (!cookie.domain.includes("xiaomi") && !cookie.domain.includes("xiaomimimo")) {
+      continue;
+    }
+    if (!seen.has(cookie.name)) {
+      seen.set(cookie.name, cookie.value);
+    }
+  }
+
+  return Array.from(seen.entries())
+    .map(([name, value]) => `${name}=${value}`)
+    .join("; ");
+}
+
 async function collectSession() {
   const found = {};
 
@@ -59,7 +90,10 @@ async function collectSession() {
     found[name] = cookie.value;
   }
 
-  const rawCookie = `serviceToken="${found.serviceToken}"; userId=${found.userId}; xiaomichatbot_ph="${found.xiaomichatbot_ph}"`;
+  const rawCookie = await collectRawCookieJar();
+  if (!rawCookie) {
+    throw new Error("Could not build Xiaomi raw cookie jar");
+  }
 
   return {
     serviceToken: found.serviceToken,
