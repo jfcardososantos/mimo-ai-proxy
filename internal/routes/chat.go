@@ -927,7 +927,7 @@ func handleChatCompletions(c *gin.Context) {
 func processStream(c *gin.Context, body io.Reader, completionID, model string, userID string, query string, availableTools []models.Tool, legacyCompletions bool) {
 	// Use a very large buffer for the reader to handle massive SSE events
 	reader := bufio.NewReaderSize(body, 16*1024*1024) // 16MB buffer
-	suppressTextStreaming := len(availableTools) > 0
+	suppressTextStreaming := false
 	
 	var inThinking bool
 	var inToolCall bool
