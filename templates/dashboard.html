@@ -38,6 +38,7 @@
             .response { min-height: 220px; white-space: pre-wrap; overflow: auto; background: #2a2118; color: #f8f2e8; border-radius: 12px; padding: 1rem; font-size: 0.9rem; }
             .mini { min-height: 56px; }
             .small { font-size: 0.9rem; }
+            .bookmarklet { display: inline-block; text-decoration: none; text-align: center; }
             @media (max-width: 860px) {
                 body { padding: 1rem; }
                 .hero, .grid { grid-template-columns: 1fr; }
@@ -78,8 +79,19 @@
 
             <div class="grid">
                 <div class="section">
+                    <h3>Connect Xiaomi</h3>
+                    <p class="muted">Faça login no Xiaomi AI Studio no mesmo navegador e depois importe a sessão com o bookmarklet abaixo. Isso salva a sessão localmente e os endpoints <code>/v1/*</code> passam a usar essa autenticação.</p>
+                    <div class="actions">
+                        <a href="{{.LoginURL}}" target="_blank" rel="noreferrer"><button type="button">1. Open Xiaomi AI Studio</button></a>
+                        <a id="bookmarkletLink" class="bookmarklet" href="#"><button class="secondary" type="button">2. Drag This Bookmarklet</button></a>
+                    </div>
+                    <p class="muted small">Arraste o botão do bookmarklet para a barra de favoritos. Depois, já logado no AI Studio, clique no favorito para enviar a sessão ao proxy.</p>
+                    <textarea id="bookmarkletCode" class="mini" readonly></textarea>
+                    <textarea id="consoleSnippet" class="mini" readonly></textarea>
+                </div>
+                <div class="section">
                     <h3>Import Credentials</h3>
-                    <p class="muted">Paste the raw Xiaomi cookie or the three fields below. This saves credentials to <code>{{.AuthStore}}</code>.</p>
+                    <p class="muted">Se preferir, cole o cookie bruto da Xiaomi ou os três campos manualmente. Isso salva credenciais em <code>{{.AuthStore}}</code>.</p>
                     <form method="post" action="/auth/import">
                         <input type="password" name="api_key" placeholder="API_KEY, if configured"/>
                         <textarea name="xiaomi_cookie" placeholder='XIAOMI_COOKIE: serviceToken="..."; userId=...; xiaomichatbot_ph="..."'></textarea>
@@ -179,6 +191,19 @@
                 document.getElementById("responsePanel").textContent = text;
             }
 
+            function buildImportSnippet() {
+                const apiKey = document.getElementById("apiKey").value.trim();
+                const endpoint = `${window.location.origin}/auth/import${apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : ""}`;
+                return `fetch(${JSON.stringify(endpoint)}, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({xiaomi_cookie: document.cookie})}).then(async (res) => { const text = await res.text(); alert("Proxy respondeu: " + res.status + "\\n\\n" + text); }).catch((err) => alert("Falha ao importar sessão: " + err));`;
+            }
+
+            function refreshImportTools() {
+                const snippet = buildImportSnippet();
+                document.getElementById("bookmarkletLink").href = `javascript:${snippet}`;
+                document.getElementById("bookmarkletCode").value = `Bookmarklet: javascript:${snippet}`;
+                document.getElementById("consoleSnippet").value = `Console snippet para rodar em https://aistudio.xiaomimimo.com/ :\n${snippet}`;
+            }
+
             async function callSimpleRoute(path) {
                 setRequestInfo(`GET ${path}`);
                 setResponse("Carregando...");
@@ -237,6 +262,9 @@
                     setResponse(`Request failed\n\n${err}`);
                 }
             }
+
+            document.getElementById("apiKey").addEventListener("input", refreshImportTools);
+            refreshImportTools();
         </script>
     </body>
 </html>

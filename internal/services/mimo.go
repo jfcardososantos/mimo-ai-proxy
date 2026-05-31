@@ -305,6 +305,24 @@ func ValidateAuthInput(rawCookie string, token string, userID string, ph string)
 }
 
 func GetSelectedAuth() (models.Auth, error) {
+	stored, err := LoadStoredAuth()
+	if err == nil {
+		if cleanEnvValue(stored.XiaomiCookie) != "" {
+			return buildAuth("", "", "", stored.XiaomiCookie)
+		}
+		if cleanEnvValue(stored.ServiceToken) != "" || cleanEnvValue(stored.UserID) != "" || cleanEnvValue(stored.XiaomiChatbot) != "" {
+			return buildAuth(stored.ServiceToken, stored.UserID, stored.XiaomiChatbot, "")
+		}
+	}
+
+	rawCookie := cleanEnvValue(os.Getenv("XIAOMI_COOKIE"))
+	if rawCookie == "" {
+		rawCookie = cleanEnvValue(os.Getenv("XIAOMI_COOKIE_RAW"))
+	}
+	if rawCookie != "" {
+		return buildAuth("", "", "", rawCookie)
+	}
+
 	token := cleanEnvValue(os.Getenv("SERVICE_TOKEN"))
 	userID := cleanEnvValue(os.Getenv("USER_ID"))
 	ph := cleanEnvValue(os.Getenv("XIAOMI_CHATBOT_PH"))

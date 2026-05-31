@@ -74,10 +74,27 @@ func maskValue(raw string) gin.H {
 	}
 }
 
-func detectAuthSource(stored services.StoredAuth, storedErr error) string {
-	if strings.TrimSpace(os.Getenv("SERVICE_TOKEN")) != "" ||
+func hasEnvAuth() bool {
+	return strings.TrimSpace(os.Getenv("XIAOMI_COOKIE")) != "" ||
+		strings.TrimSpace(os.Getenv("XIAOMI_COOKIE_RAW")) != "" ||
+		strings.TrimSpace(os.Getenv("SERVICE_TOKEN")) != "" ||
 		strings.TrimSpace(os.Getenv("USER_ID")) != "" ||
-		strings.TrimSpace(os.Getenv("XIAOMI_CHATBOT_PH")) != "" {
+		strings.TrimSpace(os.Getenv("XIAOMI_CHATBOT_PH")) != ""
+}
+
+func hasStoredAuth(stored services.StoredAuth, storedErr error) bool {
+	return storedErr == nil &&
+		(strings.TrimSpace(stored.XiaomiCookie) != "" ||
+			strings.TrimSpace(stored.ServiceToken) != "" ||
+			strings.TrimSpace(stored.UserID) != "" ||
+			strings.TrimSpace(stored.XiaomiChatbot) != "")
+}
+
+func detectAuthSource(stored services.StoredAuth, storedErr error) string {
+	if hasStoredAuth(stored, storedErr) {
+		return "data/auth.json"
+	}
+	if hasEnvAuth() {
 		return "environment"
 	}
 	return "none"
@@ -258,18 +275,32 @@ func main() {
 			return
 		}
 
+		stored, storedErr := services.LoadStoredAuth()
 		serviceToken := os.Getenv("SERVICE_TOKEN")
 		userID := os.Getenv("USER_ID")
 		chatbotPH := os.Getenv("XIAOMI_CHATBOT_PH")
+		rawCookie := os.Getenv("XIAOMI_COOKIE")
+		if strings.TrimSpace(rawCookie) == "" {
+			rawCookie = os.Getenv("XIAOMI_COOKIE_RAW")
+		}
 
 		auth, authErr := services.GetSelectedAuth()
 		c.JSON(http.StatusOK, gin.H{
 			"configured": authErr == nil,
 			"authError":  errString(authErr),
+			"authSource": detectAuthSource(stored, storedErr),
 			"env": gin.H{
 				"SERVICE_TOKEN":     maskValue(serviceToken),
 				"USER_ID":           maskValue(userID),
 				"XIAOMI_CHATBOT_PH": maskValue(chatbotPH),
+				"XIAOMI_COOKIE":     maskValue(rawCookie),
+			},
+			"stored": gin.H{
+				"loadError":         errString(storedErr),
+				"XIAOMI_COOKIE":     maskValue(stored.XiaomiCookie),
+				"SERVICE_TOKEN":     maskValue(stored.ServiceToken),
+				"USER_ID":           maskValue(stored.UserID),
+				"XIAOMI_CHATBOT_PH": maskValue(stored.XiaomiChatbot),
 			},
 			"selectedAuth": gin.H{
 				"token": maskValue(auth.Token),
