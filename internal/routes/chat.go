@@ -269,7 +269,7 @@ func handleGetHistory(c *gin.Context) {
 	})
 }
 
-func buildRecentQuery(messages []models.Message, systemContent string, toolInstructions string, maxMessages int) string {
+func buildRecentConversationQuery(messages []models.Message, systemContent string, toolInstructions string, maxMessages int) string {
 	if maxMessages <= 0 {
 		maxMessages = 1
 	}
@@ -291,16 +291,13 @@ func buildRecentQuery(messages []models.Message, systemContent string, toolInstr
 	}
 
 	body := strings.Join(processedMessages, "\n\n")
-	switch {
-	case systemContent != "" && toolInstructions != "":
-		return systemContent + toolInstructions + "\n\n" + body
-	case systemContent != "":
-		return systemContent + "\n\n" + body
-	case toolInstructions != "":
-		return strings.TrimSpace(toolInstructions) + "\n\n" + body
-	default:
-		return body
+	if systemContent != "" {
+		return fmt.Sprintf("%s%s\n\n%s", systemContent, toolInstructions, body)
 	}
+	if toolInstructions != "" {
+		return fmt.Sprintf("System: %s\n\n%s", strings.TrimSpace(toolInstructions), body)
+	}
+	return body
 }
 
 func handleChatCompletions(c *gin.Context) {
@@ -487,8 +484,8 @@ func handleChatCompletions(c *gin.Context) {
 		}
 		services.SaveMessage(convID, saveRole+"_"+utils.GenerateID(), saveRole, lastMessageText)
 
-		if lastMessage.Role == "tool" || len(input.Tools) > 0 {
-			query = buildRecentQuery(input.Messages, systemContent, toolInstructions, 6)
+		if len(input.Messages) > 1 {
+			query = buildRecentConversationQuery(input.Messages, systemContent, toolInstructions, 4)
 		} else if systemContent != "" {
 			query = fmt.Sprintf("%s%s\n\n%s", systemContent, toolInstructions, lastMessageText)
 		} else if toolInstructions != "" {
