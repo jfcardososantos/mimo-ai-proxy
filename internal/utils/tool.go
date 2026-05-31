@@ -79,6 +79,69 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 	}
 
 	if len(toolCalls) == 0 {
+		tagRegex := regexp.MustCompile(`(?s)<([A-Za-z_][A-Za-z0-9_-]*)>(.*?)</([A-Za-z_][A-Za-z0-9_-]*)>`)
+		tagMatches := tagRegex.FindAllStringSubmatch(text, -1)
+		for _, match := range tagMatches {
+			if len(match) < 4 || match[1] != match[3] || match[1] == "think" || match[1] == "tool_result" || match[1] == "tool_call" {
+				continue
+			}
+
+			body := strings.TrimSpace(match[2])
+			argsStr := body
+			if !strings.HasPrefix(body, "{") && !strings.HasPrefix(body, "[") {
+				b, _ := json.Marshal(map[string]string{"input": body})
+				argsStr = string(b)
+			}
+
+			toolCalls = append(toolCalls, models.ToolCall{
+				ID:   "call_" + GenerateID(),
+				Type: "function",
+				Function: models.ToolFunction{
+					Name:      match[1],
+					Arguments: argsStr,
+				},
+			})
+			cleanText = strings.Replace(cleanText, match[0], "", 1)
+		}
+	}
+
+	if len(toolCalls) == 0 {
+		trimmedText := strings.TrimSpace(text)
+		if strings.HasPrefix(trimmedText, "[") && strings.HasSuffix(trimmedText, "]") {
+			var items []struct {
+				Name      string      `json:"name"`
+				Arguments interface{} `json:"arguments"`
+			}
+			if err := json.Unmarshal([]byte(trimmedText), &items); err == nil {
+				for _, item := range items {
+					if item.Name == "" || item.Arguments == nil {
+						continue
+					}
+					var argsStr string
+					switch v := item.Arguments.(type) {
+					case string:
+						argsStr = v
+					default:
+						b, _ := json.Marshal(v)
+						argsStr = string(b)
+					}
+					toolCalls = append(toolCalls, models.ToolCall{
+						ID:   "call_" + GenerateID(),
+						Type: "function",
+						Function: models.ToolFunction{
+							Name:      item.Name,
+							Arguments: argsStr,
+						},
+					})
+				}
+				if len(toolCalls) > 0 {
+					cleanText = ""
+				}
+			}
+		}
+	}
+
+	if len(toolCalls) == 0 {
 		trimmedText := strings.TrimSpace(text)
 		if strings.HasPrefix(trimmedText, "{") && strings.HasSuffix(trimmedText, "}") {
 			var toolCallData struct {
@@ -107,7 +170,10 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 		}
 	}
 
-	return strings.TrimSpace(cleanText), toolCalls
+	cleanText = strings.TrimSpace(cleanText)
+	cleanText = strings.Trim(cleanText, ",")
+	cleanText = strings.TrimSpace(cleanText)
+	return cleanText, toolCalls
 }
 
 // NormalizeToolCalls is intentionally a no-op to avoid proxy-side mutation of the model output.

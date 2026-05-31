@@ -19,7 +19,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -769,12 +768,6 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 	c.JSON(http.StatusOK, response)
 }
 
-var (
-	reToolName      = regexp.MustCompile(`"name":\s*"([^"]+)"`)
-	reToolArgsStart = regexp.MustCompile(`[{\["tfn\d]`)
-	reTrailingBrace = regexp.MustCompile(`\s*}$`)
-)
-
 func processEvent(c *gin.Context, eventType, dataStr, completionID, model string, isStreaming bool, inThinking, inToolCall, sentToolCallName *bool, currentToolID *string, toolCallIndex *int, toolCallBuffer, fullText, reasoningText *strings.Builder, usage *models.Usage) {
 	if eventType == "usage" {
 		var u struct {
@@ -851,82 +844,32 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 
 			toolCallBuffer.WriteString(contentToProcess)
 
-			if isStreaming {
-				if !*sentToolCallName {
-					bufferStr := toolCallBuffer.String()
-					nameMatch := reToolName.FindStringSubmatch(bufferStr)
-					argsStartIdx := strings.Index(bufferStr, "\"arguments\":")
-					if len(nameMatch) > 1 && argsStartIdx != -1 {
-						name := nameMatch[1]
-						afterArgs := bufferStr[argsStartIdx+12:]
-						firstValIdx := reToolArgsStart.FindStringIndex(afterArgs)
-						*currentToolID = "call_" + utils.GenerateID()
-						*sentToolCallName = true
+			if endIdx != -1 {
+				rawToolCall := "<tool_call>" + toolCallBuffer.String() + "</tool_call>"
+				fullText.WriteString("<tool_call>")
+				fullText.WriteString(toolCallBuffer.String())
+				fullText.WriteString("</tool_call>")
 
-						initialToolCalls := []models.ToolCall{
-							{
-								Index: *toolCallIndex,
-								ID:    *currentToolID,
-								Type:  "function",
-								Function: models.ToolFunction{
-									Name:      name,
-									Arguments: "",
-								},
-							},
+				if isStreaming {
+					_, parsedToolCalls := utils.ParseToolCalls(rawToolCall)
+					if len(parsedToolCalls) > 0 {
+						parsedToolCalls[0].Index = *toolCallIndex
+						if parsedToolCalls[0].ID == "" {
+							parsedToolCalls[0].ID = "call_" + utils.GenerateID()
 						}
-						chunk := utils.CreateChatCompletionChunk(completionID, "", model, nil, "", nil, initialToolCalls)
-						b, _ := json.Marshal(chunk)
-						c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
-
-						if firstValIdx != nil {
-							initialArgs := strings.TrimSpace(afterArgs[firstValIdx[0]:])
-							if endIdx != -1 {
-								initialArgs = reTrailingBrace.ReplaceAllString(initialArgs, "")
-							}
-							if initialArgs != "" {
-								argChunk := []models.ToolCall{
-									{
-										Index: *toolCallIndex,
-										Function: models.ToolFunction{
-											Arguments: initialArgs,
-										},
-									},
-								}
-								chunk := utils.CreateChatCompletionChunk(completionID, "", model, nil, "", nil, argChunk)
-								b, _ := json.Marshal(chunk)
-								c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
-							}
+						if parsedToolCalls[0].Type == "" {
+							parsedToolCalls[0].Type = "function"
 						}
-						c.Writer.Flush()
-					}
-				} else {
-					delta := contentToProcess
-					if endIdx != -1 {
-						delta = reTrailingBrace.ReplaceAllString(strings.TrimSpace(delta), "")
-					}
-					if delta != "" {
-						argChunk := []models.ToolCall{
-							{
-								Index: *toolCallIndex,
-								Function: models.ToolFunction{
-									Arguments: delta,
-								},
-							},
-						}
-						chunk := utils.CreateChatCompletionChunk(completionID, "", model, nil, "", nil, argChunk)
+						chunk := utils.CreateChatCompletionChunk(completionID, "", model, nil, "", nil, []models.ToolCall{parsedToolCalls[0]})
 						b, _ := json.Marshal(chunk)
 						c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
 						c.Writer.Flush()
 					}
 				}
-			}
 
-			if endIdx != -1 {
-				fullText.WriteString("<tool_call>")
-				fullText.WriteString(toolCallBuffer.String())
-				fullText.WriteString("</tool_call>")
 				*inToolCall = false
 				*sentToolCallName = false
+				*currentToolID = ""
 				*toolCallIndex++
 				toolCallBuffer.Reset()
 				remaining = remaining[endIdx+12:]
@@ -941,8 +884,10 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 
 		if thinkStartIdx != -1 && (toolStartIdx == -1 || thinkStartIdx < toolStartIdx) {
 			text := remaining[:thinkStartIdx]
-			fullText.WriteString(text)
-			if isStreaming && text != "" {
+			if strings.TrimSpace(strings.Trim(text, ",")) != "" {
+				fullText.WriteString(text)
+			}
+			if isStreaming && strings.TrimSpace(strings.Trim(text, ",")) != "" {
 				chunk := utils.CreateChatCompletionChunk(completionID, text, model, nil, "", nil, nil)
 				b, _ := json.Marshal(chunk)
 				c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
@@ -955,8 +900,10 @@ func processEvent(c *gin.Context, eventType, dataStr, completionID, model string
 
 		if toolStartIdx != -1 {
 			text := remaining[:toolStartIdx]
-			fullText.WriteString(text)
-			if isStreaming && text != "" {
+			if strings.TrimSpace(strings.Trim(text, ",")) != "" {
+				fullText.WriteString(text)
+			}
+			if isStreaming && strings.TrimSpace(strings.Trim(text, ",")) != "" {
 				chunk := utils.CreateChatCompletionChunk(completionID, text, model, nil, "", nil, nil)
 				b, _ := json.Marshal(chunk)
 				c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
