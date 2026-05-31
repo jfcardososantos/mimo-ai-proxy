@@ -605,9 +605,13 @@ func handleChatCompletions(c *gin.Context) {
 	}
 
 	if input.Stream {
-		c.Header("Content-Type", "text/event-stream")
+		c.Header("Content-Type", "text/event-stream; charset=utf-8")
 		c.Header("Cache-Control", "no-cache")
 		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		if rc := http.NewResponseController(c.Writer); rc != nil {
+			_ = rc.SetWriteDeadline(time.Time{})
+		}
 
 		initialChunk := models.ChatCompletionChunk{
 			ID:      "chatcmpl-" + completionID,
@@ -727,29 +731,41 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 	var reasoningText strings.Builder
 	var usage models.Usage
 	var eventType string
+	var upstreamErr error
+
+	streamDone := false
+	defer func() {
+		if streamDone {
+			return
+		}
+		finishReason := "stop"
+		if _, tcs := utils.ParseToolCalls(fullText.String()); len(tcs) > 0 {
+			finishReason = "tool_calls"
+		}
+		utils.FinalizeChatStream(c, completionID, model, finishReason, &usage)
+		if upstreamErr != nil {
+			fmt.Printf("[%s] Stream recovered after upstream error: %v\n", completionID, upstreamErr)
+		}
+	}()
 
 	for {
 		line, err := reader.ReadString('\n')
+		line = strings.TrimSpace(line)
+		if line != "" {
+			if strings.HasPrefix(line, "event:") {
+				eventType = strings.TrimSpace(line[6:])
+			} else if strings.HasPrefix(line, "data:") {
+				dataStr := strings.TrimSpace(line[5:])
+				processEvent(c, eventType, dataStr, completionID, model, true, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
+				eventType = ""
+			}
+		}
 		if err != nil {
 			if err != io.EOF {
-				fmt.Printf("Reader error: %v\n", err)
+				upstreamErr = err
+				fmt.Printf("[%s] Upstream reader error: %v\n", completionID, err)
 			}
 			break
-		}
-
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		if strings.HasPrefix(line, "event:") {
-			eventType = strings.TrimSpace(line[6:])
-			continue
-		}
-		if strings.HasPrefix(line, "data:") {
-			dataStr := strings.TrimSpace(line[5:])
-			processEvent(c, eventType, dataStr, completionID, model, true, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
-			eventType = ""
 		}
 	}
 
@@ -797,11 +813,12 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 			storePendingToolCalls(userID, toolCalls)
 		}
 	}
-	finalChunk := utils.CreateChatCompletionChunk(completionID, "", model, &finishReason, "", &usage, finalToolCalls)
-	finalBytes, _ := json.Marshal(finalChunk)
-	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(finalBytes)))
-	c.Writer.WriteString("data: [DONE]\n\n")
-	c.Writer.Flush()
+	streamDone = true
+	utils.FinalizeChatStream(c, completionID, model, finishReason, &usage)
+	if upstreamErr != nil {
+		fmt.Printf("[%s] Stream completed after upstream error: %v\n", completionID, upstreamErr)
+	}
+	_ = finalToolCalls // emitted incrementally above when needed
 }
 
 func finalizeToolCalls(toolCalls []models.ToolCall) []models.ToolCall {

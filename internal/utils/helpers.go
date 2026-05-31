@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"mimoproxy/internal/models"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -96,13 +97,23 @@ func EmitStreamToolCall(c *gin.Context, completionID, model string, tc models.To
 	}})
 	WriteSSEChunk(c, nameChunk)
 
-	if tc.Function.Arguments != "" {
-		argsChunk := CreateChatCompletionChunk(completionID, "", model, nil, "", nil, []models.ToolCall{{
-			Index: idx,
-			Function: models.ToolFunction{
-				Arguments: tc.Function.Arguments,
-			},
-		}})
-		WriteSSEChunk(c, argsChunk)
+	args := strings.TrimSpace(tc.Function.Arguments)
+	if args == "" {
+		args = "{}"
 	}
+	argsChunk := CreateChatCompletionChunk(completionID, "", model, nil, "", nil, []models.ToolCall{{
+		Index: idx,
+		Function: models.ToolFunction{
+			Arguments: args,
+		},
+	}})
+	WriteSSEChunk(c, argsChunk)
+}
+
+// FinalizeChatStream emits the terminal OpenAI SSE frames (finish_reason + [DONE]).
+func FinalizeChatStream(c *gin.Context, completionID, model, finishReason string, usage *models.Usage) {
+	fr := finishReason
+	WriteSSEChunk(c, CreateChatCompletionChunk(completionID, "", model, &fr, "", usage, nil))
+	c.Writer.WriteString("data: [DONE]\n\n")
+	c.Writer.Flush()
 }

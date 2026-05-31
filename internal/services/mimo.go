@@ -29,7 +29,7 @@ func init() {
 	transport.MaxIdleConns = 500
 	transport.MaxIdleConnsPerHost = 100
 	transport.IdleConnTimeout = 90 * time.Second
-	transport.ResponseHeaderTimeout = 60 * time.Second
+	transport.ResponseHeaderTimeout = 600 * time.Second
 	transport.ExpectContinueTimeout = 5 * time.Second
 	transport.WriteBufferSize = 4 * 1024 * 1024 // 4MB
 	transport.ReadBufferSize = 4 * 1024 * 1024  // 4MB
