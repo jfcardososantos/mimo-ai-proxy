@@ -88,13 +88,17 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 	}
 
 	if len(toolCalls) == 0 {
-		altRegex := regexp.MustCompile(`(?s)<([A-Za-z_][\w\-]*)>(.*?)</\1>`)
+		altRegex := regexp.MustCompile(`(?s)<([A-Za-z_][\w\-]*)>(.*?)</([A-Za-z_][\w\-]*)>`)
 		altMatches := altRegex.FindAllStringSubmatch(text, -1)
 		for _, match := range altMatches {
-			if len(match) < 3 {
+			if len(match) < 4 {
 				continue
 			}
 			toolName := strings.TrimSpace(match[1])
+			closeName := strings.TrimSpace(match[3])
+			if toolName == "" || closeName == "" || !strings.EqualFold(toolName, closeName) {
+				continue
+			}
 			if strings.EqualFold(toolName, "tool_call") {
 				continue
 			}
