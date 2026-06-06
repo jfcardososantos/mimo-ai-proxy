@@ -25,7 +25,7 @@ async function loadConfig() {
   const stored = await chrome.storage.local.get(["proxyUrl", "apiKey"]);
   proxyUrlInput.value = stored.proxyUrl || "";
   apiKeyInput.value = stored.apiKey || "";
-  setStatus("Configure a URL do proxy e clique em Import Xiaomi Session.");
+  setStatus("Configure a URL do flip-mimo-api e clique em Import Xiaomi Session. A API principal não exige token.");
 }
 
 async function saveConfig() {

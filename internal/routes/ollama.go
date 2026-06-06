@@ -185,6 +185,7 @@ type ollamaRequestSpec struct {
 	Stream            bool
 	ThinkingRequested bool
 	ResponseMode      string
+	StatToken         string
 }
 
 func runOllamaRequest(c *gin.Context, spec ollamaRequestSpec) {
@@ -300,7 +301,19 @@ func runOllamaRequest(c *gin.Context, spec ollamaRequestSpec) {
 		customHeaders[strings.ToLower(k)] = v[0]
 	}
 
-	resp, err := sendOllamaUpstream(payload, customHeaders, completionID)
+	auth, authErr := services.GetSelectedAuth()
+	if authErr != nil {
+		if spec.Stream {
+			c.Header("Content-Type", "application/x-ndjson")
+			writeOllamaJSONLine(c, gin.H{"error": "invalid Xiaomi auth configuration"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid Xiaomi auth configuration"})
+		return
+	}
+	spec.StatToken = auth.Token
+
+	resp, err := sendOllamaUpstream(payload, customHeaders, completionID, auth)
 	if err != nil {
 		if spec.Stream {
 			c.Header("Content-Type", "application/x-ndjson")
@@ -329,14 +342,9 @@ func runOllamaRequest(c *gin.Context, spec ollamaRequestSpec) {
 	respondOllamaNonStream(c, bodyReader, spec, targetModel, query, sessionHandle, toolInstructions, startedAt)
 }
 
-func sendOllamaUpstream(payload models.MimoPayload, customHeaders map[string]string, completionID string) (*http.Response, error) {
+func sendOllamaUpstream(payload models.MimoPayload, customHeaders map[string]string, completionID string, auth models.Auth) (*http.Response, error) {
 	maxRetries := 3
 	for i := 0; i < maxRetries; i++ {
-		auth, authErr := services.GetSelectedAuth()
-		if authErr != nil {
-			return nil, fmt.Errorf("invalid Xiaomi auth configuration")
-		}
-
 		resp, err := sendMimoChatRequest(auth, payload, customHeaders, completionID)
 		if err == nil {
 			if resp.StatusCode == http.StatusOK {
@@ -598,7 +606,7 @@ func (s *ollamaStreamState) finalize(c *gin.Context) {
 		s.usage.CompletionTokens = s.fullText.Len() / 4
 		s.usage.TotalTokens = s.usage.PromptTokens + s.usage.CompletionTokens
 	}
-	IncrementTokenStat(os.Getenv("SERVICE_TOKEN"), s.usage.TotalTokens)
+	IncrementTokenStat(s.spec.StatToken, s.usage.TotalTokens)
 	services.SaveMessage(s.sessionHandle, "asst_"+utils.GenerateID(), "assistant", assistantTranscript(s.fullText.String(), s.reasoningText.String()))
 
 	if len(toolCalls) > 0 {

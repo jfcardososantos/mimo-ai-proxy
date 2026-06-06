@@ -1,140 +1,284 @@
-# Mimo AI Gateway & Proxy (Go)
+# flip-mimo-api
 
-Gateway avançado e Proxy API de alta performance para o ecossistema Mimo AI da Xiaomi, projetado para fornecer uma ponte robusta entre as capacidades do Mimo e o padrão de mercado OpenAI.
+`flip-mimo-api` expõe os modelos da Xiaomi Mimo por uma API simples e compatível com OpenAI e Ollama.
 
-## Visão Geral
+O fluxo principal é:
 
-O **Mimo AI Proxy** não é apenas uma camada de tradução; é um gateway completo que gerencia sessões, otimiza o uso de contexto, provê persistência de dados e oferece ferramentas de monitoramento em tempo real. Ele permite que desenvolvedores utilizem o Mimo AI como se fosse um modelo nativo da OpenAI, com suporte total a recursos avançados como streaming, reasoning e tool calling.
+1. fazer login no Xiaomi AI Studio;
+2. importar a sessão com a extensão do Chrome/Edge;
+3. chamar a API enviando apenas `model` e payload.
 
-## Funcionalidades Principais
+Os endpoints públicos não exigem token do cliente. A autenticação com a Xiaomi fica encapsulada no backend por meio do arquivo `data/auth.json`.
 
-- **OpenAI Standard Gateway**: Implementação completa dos endpoints `/v1/chat/completions`, `/v1/completions` e `/v1/models`.
-- **Ollama Compatibility Layer**: Endpoints `/api/chat`, `/api/generate`, `/api/tags` e `/api/version` com resposta no padrão Ollama, incluindo `stream` via NDJSON.
-- **Inteligência de Sessão**: 
-  - Detecção automática de conversas via fingerprinting de mensagens.
-  - Sincronização bi-direcional com o histórico oficial da Xiaomi.
-  - Persistência local robusta em SQLite.
-- **Otimização de Contexto (Context Mastery)**:
-  - Suporte a contextos massivos de até **1 Milhão de Tokens**.
-  - Gerenciamento inteligente de payload, enviando apenas deltas quando uma sessão é identificada, garantindo estabilidade e performance.
-- **AI-Native Features**:
-  - **Reasoning (Thinking)**: Extração nativa de blocos `<think>` para o campo `reasoning_content`.
-  - **Sequential Tool Calling**: Orquestração de múltiplas chamadas de ferramentas em sequência.
-  - **Web Search**: Ativação dinâmica de busca na web via modelo, `web_search: true`, ferramentas com nome `search`/`web`, ou `DEFAULT_WEB_SEARCH=true`.
-- **Infraestrutura e Operações**:
-  - **Live Dashboard**: Interface web integrada para monitoramento de uptime, latência upstream e consumo de tokens por conta.
-  - **Browser Extension Login Flow**: Extensão Chrome/Edge para capturar a sessão autenticada da Xiaomi AI Studio e salvar no proxy.
-  - **Direct Proxy**: Acesso de baixo nível ao endpoint original da Xiaomi via `/open-apis/bot/chat`.
+## O que o projeto entrega
+
+- Compatibilidade com OpenAI em `POST /v1/chat/completions`, `POST /v1/completions` e `GET /v1/models`
+- Compatibilidade com Ollama em `POST /api/chat`, `POST /api/generate`, `GET /api/tags` e `GET /api/version`
+- Streaming
+- Tool calling
+- Persistência de histórico em SQLite
+- Dashboard local para operação e teste
+- Extensão para importar a sessão autenticada da Xiaomi
+
+## Como funciona a autenticação
+
+`flip-mimo-api` não depende mais de `SERVICE_TOKEN`, `USER_ID`, `XIAOMI_CHATBOT_PH` ou `XIAOMI_COOKIE` no ambiente para operar.
+
+A sessão ativa é lida de:
+
+- `data/auth.json`
+
+Esse arquivo é preenchido pela extensão ou, se você quiser automatizar isso sem navegador, pelo endpoint administrativo `POST /auth/import`.
+
+Se a Xiaomi invalidar a sessão:
+
+1. `GET /auth/status` passa a indicar problema;
+2. chamadas para `/v1/*` ou `/api/*` falham;
+3. você reimporta a sessão pela extensão.
+
+## Requisitos
+
+- Go 1.24+ para execução local
+- Docker e Docker Compose para execução em container
+- Chrome ou Edge para usar a extensão
 
 ## Configuração
 
-1. **Requisitos**: Go 1.24+ ou Docker.
+As variáveis de ambiente úteis agora são:
 
-2. **Variáveis de Ambiente**: Configure o `.env` (use `[.env.example](.env.example)` como base).
-   ```env
-   SERVICE_TOKEN="token"
-   USER_ID="id"
-   XIAOMI_CHATBOT_PH="ph"
-   
-   # Segurança e Rede:
-   PORT=3000
-   API_KEY="sua_chave_secreta"
-   CORS_ORIGIN="*"
-   ```
+```env
+PORT=3000
+CORS_ORIGIN=*
+API_KEY=
+AUTH_STORE_PATH=
+```
 
-   Observações importantes:
-   - Se você não quiser manter esses 3 valores manualmente, use a extensão do navegador para importar a sessão logada da Xiaomi.
-   - O proxy também aceita `XIAOMI_COOKIE` bruto e salva sessões importadas em `data/auth.json`.
-   - Os endpoints compatíveis com OpenAI continuam os mesmos, principalmente `POST /v1/chat/completions`.
-   - Agora também há compatibilidade com clientes Ollama via `POST /api/chat` e `POST /api/generate`.
+Notas:
 
-## Como usar
+- `API_KEY` é opcional.
+- Se definida, ela protege apenas rotas administrativas de sessão, como `POST /auth/import`, `POST /auth/extension/import`, `POST /auth/clear` e `GET /auth/debug`.
+- `AUTH_STORE_PATH` é opcional. Se não for definido, a sessão fica em `data/auth.json`.
 
-### Docker (Recomendado)
+## Executando
+
+### Docker
+
 ```bash
 docker-compose up -d
 ```
 
-### Manualmente
+### Go
+
 ```bash
 go mod tidy
 go run main.go
 ```
 
-### Exemplo de Integração
+Depois abra:
+
+- `http://localhost:3000/`
+
+## Setup recomendado com a extensão
+
+### 1. Login na Xiaomi
+
+Entre em:
+
+- `https://aistudio.xiaomimimo.com/`
+
+### 2. Baixe a extensão
+
+Pela dashboard, baixe:
+
+- `/downloads/mimo-xiaomi-session-extension.zip`
+
+Ou use a pasta local `extension/`.
+
+### 3. Instale no navegador
+
+1. abra `chrome://extensions` ou `edge://extensions`
+2. ative `Developer mode`
+3. clique em `Load unpacked`
+4. selecione a pasta `extension`
+
+### 4. Importe a sessão
+
+No popup da extensão:
+
+1. informe a URL do proxy
+2. informe a `API_KEY` apenas se você protegeu a rota administrativa
+3. clique em `Import Xiaomi Session`
+
+Se der certo, a sessão será salva em `data/auth.json`.
+
+## Dashboard
+
+A home em `/` foi desenhada para operação rápida:
+
+- status da sessão
+- QR code para abrir o Xiaomi AI Studio
+- download da extensão
+- exemplos de uso
+- testador dos endpoints
+- links para debug e limpeza de sessão
+
+## Endpoints
+
+### OpenAI
+
+#### `POST /v1/chat/completions`
+
+Compatível com o formato de chat da OpenAI.
+
 ```bash
 curl http://localhost:3000/v1/chat/completions \
-  -H "Authorization: Bearer sua_chave" \
-  -d '{
-    "model": "mimo-v2.5-pro",
-    "messages": [{"role": "user", "content": "Explique a teoria da relatividade."}],
-    "stream": true,
-    "web_search": true
-  }'
-```
-
-### Exemplo Ollama
-```bash
-curl http://localhost:3000/api/chat \
-  -H "Authorization: Bearer sua_chave" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "mimo-v2.5-pro",
-    "messages": [{"role": "user", "content": "Olá"}]
+    "messages": [
+      {"role": "user", "content": "Explique em uma frase o que este proxy faz."}
+    ],
+    "stream": false
   }'
 ```
 
-### IDE / Vibecoding (tool calls)
+#### `POST /v1/completions`
 
-Configure o cliente OpenAI da IDE apontando para `http://localhost:3000/v1` com `Authorization: Bearer <API_KEY>`.
+Endpoint legado. O proxy converte `prompt` internamente para chat.
 
-- Envie `tools` e `tool_choice` normalmente; o proxy converte para o formato XML do Mimo e devolve `tool_calls` compatíveis com OpenAI.
-- Use `stream: true` para respostas em tempo real (recomendado para Cursor e similares).
-- Para busca atualizada na web, use `"web_search": true` ou um modelo com `search` no nome.
-- Com `parallel_tool_calls: false`, apenas a primeira ferramenta é retornada por turno; as demais seguem após mensagens `role: tool`.
+#### `GET /v1/models`
 
-### Kilo Code (agent para após reasoning)
+Lista os modelos visíveis pela sessão autenticada na Xiaomi.
 
-Se o agente planeja (“vou ler o projeto…”) e para sem executar tools:
+### Ollama
 
-1. Com tools, o proxy já desliga thinking por padrão (use `AGENT_ENABLE_THINKING=true` só se quiser reasoning de volta).
-2. Use `stream: true` no provider OpenAI do Kilo.
-3. Confirme que o modelo no Kilo é o mesmo configurado no proxy (ex. `mimo-v2.5-pro`).
+#### `POST /api/chat`
 
-O proxy agora preserva `reasoning_content` no histórico (exigido pelo Mimo em multi-turn com tools) e corrige o parse das tags `<think>`.
+```bash
+curl http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mimo-v2.5-pro",
+    "messages": [
+      {"role": "user", "content": "Olá"}
+    ]
+  }'
+```
 
-### Performance (agent / Kilo Code)
+#### `POST /api/generate`
 
-Com `tools` na requisição, o modo rápido vem **ligado por padrão**:
+Compatível com o formato `generate` do Ollama.
 
-- Últimas ~20 mensagens + tool results truncados (~6k chars cada)
-- Contexto máximo ~100k chars (antes podia ir a milhões)
-- Web search **desligado** com tools (use `"web_search": true` só quando precisar)
-- `CreateConversation` e sync SQLite em background
-- Várias tool calls de uma vez (sem round-trips extras no proxy)
+#### `GET /api/tags`
 
-Ajuste no `.env`: `AGENT_MAX_CONTEXT_CHARS`, `AGENT_MAX_MESSAGES`, `AGENT_MAX_TOOL_RESULT_CHARS`.
+Lista os modelos no formato Ollama.
 
-## Setup Assistido
+#### `GET /api/version`
 
-Ao abrir `/`, o proxy mostra:
-- status atual da autenticação;
-- QR code para abrir `https://aistudio.xiaomimimo.com/`;
-- download da extensão para importar a sessão autenticada da Xiaomi;
-- formulário alternativo para salvar `XIAOMI_COOKIE` bruto ou os campos `serviceToken`, `userId` e `xiaomichatbot_ph`.
+Expõe a versão compatível do adaptador Ollama.
 
-As credenciais salvas pela interface ficam em `data/auth.json` por padrão.
+### Operação e diagnóstico
 
-Fluxo recomendado:
-1. Faça login no Xiaomi AI Studio.
-2. Instale a extensão disponível no dashboard.
-3. Informe a URL do proxy e a `API_KEY`, se existir.
-4. Clique em `Import Xiaomi Session`.
-5. Use normalmente `/v1/chat/completions`, `/v1/models` e os demais endpoints.
+#### `GET /health`
 
-## Arquitetura de Dados
+Retorna estado do processo e da sessão.
 
-O gateway utiliza uma base **SQLite** local (`data/history.db`) para garantir que as conversas sejam mantidas mesmo entre reinicializações, permitindo consultas rápidas ao histórico e sincronização sob demanda com a nuvem da Xiaomi.
+#### `GET /auth/status`
+
+Mostra se a sessão carregada está configurada.
+
+#### `GET /auth/debug`
+
+Rota administrativa para inspecionar os campos persistidos. Se `API_KEY` estiver definida, precisa de autenticação.
+
+#### `POST /auth/clear`
+
+Remove a sessão salva.
+
+#### `POST /auth/import`
+
+Permite importar a sessão manualmente por payload, se você realmente precisar automatizar isso sem a extensão.
+
+#### `POST /auth/extension/import`
+
+Endpoint usado pela extensão.
+
+## Integração com IDEs e clientes
+
+### OpenAI-compatible
+
+Configure o cliente para usar:
+
+- Base URL: `http://localhost:3000/v1`
+
+Não envie `Authorization` para as rotas públicas, a menos que seu cliente exija algum valor fictício. O backend não precisa dele para `/v1/*`.
+
+### Ollama-compatible
+
+Configure o cliente para usar:
+
+- Base URL: `http://localhost:3000/api`
+
+## Tool calling e agentes
+
+O projeto converte ferramentas do formato OpenAI para o formato esperado pelo Mimo e devolve `tool_calls` compatíveis.
+
+Recomendações:
+
+- prefira `stream: true` para agentes
+- mantenha o `model` explícito
+- use `parallel_tool_calls: false` se o cliente tiver dificuldade com múltiplas tools por turno
+
+## Persistência
+
+Arquivos relevantes:
+
+- `data/auth.json`: sessão da Xiaomi
+- `data/history.db`: histórico local em SQLite
+
+Se estiver em Docker, mantenha `data/` em volume persistente.
+
+## Troubleshooting
+
+### A API responde que a sessão não está configurada
+
+Causa provável:
+
+- a extensão ainda não importou a sessão
+- `data/auth.json` foi apagado
+- a sessão foi salva em outro caminho por `AUTH_STORE_PATH`
+
+### A Xiaomi devolve 401
+
+Causa provável:
+
+- sessão expirada
+
+Correção:
+
+1. faça login de novo no Xiaomi AI Studio
+2. reimporte a sessão pela extensão
+
+### `GET /v1/models` não lista modelos
+
+Verifique:
+
+- se `GET /auth/status` mostra sessão válida
+- se a conta usada no Xiaomi AI Studio ainda tem acesso aos modelos
+
+## Extensão
+
+Arquivos:
+
+- `extension/manifest.json`
+- `extension/popup.html`
+- `extension/popup.js`
+
+Resumo:
+
+- lê cookies da Xiaomi no navegador
+- monta a sessão
+- envia para `POST /auth/extension/import`
 
 ## Licença
 

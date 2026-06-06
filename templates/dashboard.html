@@ -1,175 +1,425 @@
-<!--
- File: dashboard.html
- Project: templates
- Created: 2026-05-06
- 
- Last Modified: Wed May 06 2026
- Modified By: Pedro Farias
--->
-
 <html>
     <head>
-        <title>Xiaomi Mimo Proxy (Go)</title>
+        <title>{{.ProductName}}</title>
         <style>
-            body { font-family: Georgia, "Times New Roman", serif; line-height: 1.6; max-width: 1100px; margin: 0 auto; padding: 2rem; background: linear-gradient(135deg, #f7f3ea 0%, #ebe4d8 100%); color: #1f2937; }
-            .card { background: rgba(255,255,255,0.9); padding: 2rem; border-radius: 18px; box-shadow: 0 18px 40px rgba(80,60,30,0.12); border: 1px solid rgba(120, 98, 59, 0.14); backdrop-filter: blur(6px); }
-            .hero { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.5rem; align-items: start; }
-            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem; }
-            h1, h2, h3 { color: #2f2419; margin-top: 0; }
-            h1 { font-size: 2.2rem; line-height: 1.1; }
-            code, textarea, input { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
-            code { background: #f4ead6; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
-            .status { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #22c55e; margin-right: 8px; }
-            .status.warn { background: #f59e0b; }
-            .muted { color: #6b7280; }
-            .pill { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; background: #efe3c6; color: #6a4f22; font-size: 0.9rem; }
-            .section { background: rgba(255,255,255,0.7); border: 1px solid rgba(120, 98, 59, 0.12); border-radius: 14px; padding: 1rem 1.1rem; }
-            .qr { width: 220px; height: 220px; border-radius: 12px; background: white; border: 1px solid #e5d7bc; }
-            .qr-wrap { text-align: center; }
-            ul { padding-left: 1.2rem; }
-            textarea, input { width: 100%; box-sizing: border-box; border: 1px solid #d8c7a8; border-radius: 10px; padding: 0.8rem; background: #fffdf8; margin-bottom: 0.8rem; }
-            textarea { min-height: 120px; resize: vertical; }
-            button { background: #7c4f18; color: white; border: none; border-radius: 999px; padding: 0.8rem 1.2rem; cursor: pointer; }
-            button.secondary { background: #e9dcc3; color: #5e4626; }
-            .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-            .stack { display: flex; flex-direction: column; gap: 0.8rem; }
-            .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-            .note { font-size: 0.95rem; background: #fbf5e8; border-left: 4px solid #c08b36; padding: 0.9rem 1rem; border-radius: 8px; }
-            .response { min-height: 220px; white-space: pre-wrap; overflow: auto; background: #2a2118; color: #f8f2e8; border-radius: 12px; padding: 1rem; font-size: 0.9rem; }
-            .mini { min-height: 56px; }
-            .small { font-size: 0.9rem; }
-            .export-box { min-height: 100px; }
-            @media (max-width: 860px) {
-                body { padding: 1rem; }
-                .hero, .grid { grid-template-columns: 1fr; }
-                .row { grid-template-columns: 1fr; }
-                .qr { width: 200px; height: 200px; }
+            :root {
+                --bg: #f6efe4;
+                --bg-deep: #e7d2ad;
+                --paper: rgba(255, 251, 245, 0.9);
+                --panel: rgba(255, 248, 240, 0.76);
+                --ink: #1e2430;
+                --muted: #657286;
+                --line: rgba(89, 67, 36, 0.14);
+                --accent: #0d8c67;
+                --accent-2: #a7531d;
+                --ok: #169a59;
+                --warn: #d97706;
+                --dark: #1f1712;
+                --dark-soft: #2a211b;
+            }
+            * { box-sizing: border-box; }
+            body {
+                margin: 0;
+                color: var(--ink);
+                font-family: Georgia, "Times New Roman", serif;
+                background:
+                    radial-gradient(circle at 10% 10%, rgba(255,255,255,0.75), transparent 26%),
+                    radial-gradient(circle at 85% 18%, rgba(13, 140, 103, 0.12), transparent 20%),
+                    linear-gradient(135deg, var(--bg) 0%, var(--bg-deep) 100%);
+            }
+            .shell { max-width: 1260px; margin: 0 auto; padding: 22px 18px 40px; }
+            .card {
+                background: var(--paper);
+                border: 1px solid var(--line);
+                border-radius: 30px;
+                padding: 22px;
+                box-shadow: 0 30px 80px rgba(70, 45, 18, 0.14);
+                backdrop-filter: blur(10px);
+            }
+            .hero {
+                display: grid;
+                grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
+                gap: 18px;
+            }
+            .hero-main, .section {
+                background: var(--panel);
+                border: 1px solid var(--line);
+                border-radius: 24px;
+                padding: 20px;
+            }
+            .hero-main {
+                min-height: 360px;
+                position: relative;
+                overflow: hidden;
+            }
+            .hero-main::after {
+                content: "";
+                position: absolute;
+                right: -50px;
+                bottom: -70px;
+                width: 260px;
+                height: 260px;
+                border-radius: 999px;
+                background: radial-gradient(circle, rgba(13, 140, 103, 0.18), rgba(13, 140, 103, 0));
+            }
+            .hero-side {
+                display: grid;
+                gap: 18px;
+            }
+            .badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 12px;
+                border-radius: 999px;
+                background: #e4f5ef;
+                color: #0b7557;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                font-size: 0.82rem;
+            }
+            .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--ok); }
+            .dot.warn { background: var(--warn); }
+            h1, h2, h3 { margin: 0 0 12px; color: #261c16; }
+            h1 {
+                margin-top: 16px;
+                font-size: clamp(2.8rem, 5vw, 4.8rem);
+                line-height: 0.92;
+                letter-spacing: -0.05em;
+                max-width: 9ch;
+            }
+            h2 { font-size: 1.35rem; }
+            h3 { font-size: 1.05rem; }
+            p { margin: 0 0 12px; }
+            .lede { font-size: 1.08rem; max-width: 58ch; }
+            .muted { color: var(--muted); }
+            .hero-note {
+                margin-top: 18px;
+                padding: 14px 16px;
+                border-radius: 16px;
+                border: 1px solid rgba(13, 140, 103, 0.16);
+                background: rgba(255,255,255,0.68);
+                max-width: 60ch;
+            }
+            .hero-note.warn {
+                border-color: rgba(217, 119, 6, 0.22);
+                background: rgba(255, 245, 232, 0.85);
+            }
+            .actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin-top: 18px;
+            }
+            .stats-row, .grid, .endpoint-grid {
+                display: grid;
+                gap: 16px;
+                margin-top: 18px;
+            }
+            .stats-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+            .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .endpoint-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .metric, .endpoint-card {
+                background: rgba(255,255,255,0.63);
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                padding: 16px;
+            }
+            .metric strong {
+                display: block;
+                font-size: 1.28rem;
+                margin-bottom: 4px;
+            }
+            .eyebrow {
+                display: inline-block;
+                margin-bottom: 8px;
+                color: var(--accent-2);
+                font-size: 0.82rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+            .endpoint-head {
+                display: flex;
+                align-items: start;
+                justify-content: space-between;
+                gap: 12px;
+                margin-bottom: 10px;
+            }
+            .method {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 54px;
+                padding: 4px 10px;
+                border-radius: 999px;
+                background: #e2f5ee;
+                color: #0d7557;
+                font-size: 0.8rem;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+            }
+            .method.get {
+                background: #efe3cf;
+                color: #85501a;
+            }
+            code, textarea, input, pre, button {
+                font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+            }
+            code {
+                background: #f3e5cf;
+                padding: 0.18rem 0.45rem;
+                border-radius: 7px;
+                font-size: 0.92em;
+            }
+            .snippet, .response {
+                margin: 0;
+                padding: 15px;
+                border-radius: 18px;
+                overflow: auto;
+                white-space: pre-wrap;
+            }
+            .snippet {
+                background: var(--dark);
+                color: #f6efe6;
+                border: 1px solid rgba(255,255,255,0.07);
+                font-size: 0.9rem;
+            }
+            .response {
+                min-height: 280px;
+                background: var(--dark-soft);
+                color: #f6efe6;
+            }
+            textarea, input {
+                width: 100%;
+                border: 1px solid #d9c8ab;
+                border-radius: 14px;
+                background: #fffdf8;
+                color: var(--ink);
+                padding: 0.95rem 1rem;
+            }
+            textarea { min-height: 160px; resize: vertical; }
+            .mini { min-height: 72px; }
+            .field-label {
+                display: block;
+                margin: 12px 0 8px;
+                font-size: 0.86rem;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: #7a5730;
+            }
+            button {
+                border: none;
+                border-radius: 999px;
+                padding: 0.88rem 1.15rem;
+                cursor: pointer;
+                background: var(--accent);
+                color: white;
+                font-size: 0.92rem;
+            }
+            button.secondary {
+                background: #f0dfc5;
+                color: #694823;
+            }
+            button.ghost {
+                background: rgba(255,255,255,0.75);
+                color: #3a403f;
+                border: 1px solid var(--line);
+            }
+            ul { margin: 0; padding-left: 1.1rem; }
+            li + li { margin-top: 0.35rem; }
+            .inline-meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                color: var(--muted);
+                font-size: 0.93rem;
+            }
+            .full { grid-column: 1 / -1; }
+            @media (max-width: 980px) {
+                .hero, .stats-row, .grid, .endpoint-grid { grid-template-columns: 1fr; }
+                h1 { max-width: none; }
+            }
+            @media (max-width: 560px) {
+                .shell { padding: 12px 10px 26px; }
+                .card { padding: 14px; border-radius: 22px; }
+                .hero-main, .section { padding: 16px; }
+                .actions a, .actions button { width: 100%; }
+                .actions a button { width: 100%; }
             }
         </style>
     </head>
     <body>
-        <div class="card">
-            <div class="hero">
-                <div>
-                    <div class="pill">Fork-ready setup</div>
-                    <h1><span class="status {{if .AuthError}}warn{{end}}"></span>Mimo AI Proxy</h1>
-                    <p>Uptime: <strong>{{.Uptime}}s</strong></p>
-                    <p>Auth source: <strong>{{.AuthSource}}</strong></p>
-                    <p>Auth store path: <code>{{.AuthStore}}</code></p>
-                    <p class="muted small">Para persistir a sessão entre deploys, mantenha <code>{{.AuthStore}}</code> dentro de um volume persistente. Se quiser mudar o local, use <code>AUTH_STORE_PATH</code>.</p>
-                    {{if .AuthError}}
-                    <div class="note">
-                        <strong>Auth problem:</strong> {{.AuthError}}
-                    </div>
-                    {{else}}
-                    <div class="note">
-                        <strong>Auth loaded successfully.</strong> If Xiaomi later returns <code>401</code>, the stored session most likely expired or the cookie fields came from different logins.
-                    </div>
-                    {{end}}
-                    <div class="actions">
-                        <a href="{{.LoginURL}}" target="_blank" rel="noreferrer"><button type="button">Open Xiaomi AI Studio</button></a>
-                        <a href="/auth/status"><button class="secondary" type="button">View Auth Status JSON</button></a>
-                    </div>
-                </div>
-                <div class="qr-wrap section">
-                    <img class="qr" src="{{.QRCodeURL}}" alt="QR code for Xiaomi AI Studio login"/>
-                    <p><strong>Login QR</strong></p>
-                    <p class="muted">Scan to open <code>{{.LoginURL}}</code>. The proxy cannot automatically read Xiaomi cookies from that browser session.</p>
-                </div>
-            </div>
-
-            <div class="grid">
-                <div class="section">
-                    <h3>Connect Xiaomi</h3>
-                    <p class="muted">Use a extensão do navegador para capturar a sessão autenticada da Xiaomi e salvar no proxy. Isso funciona mesmo com cookies <code>HttpOnly</code> e mantém os endpoints <code>/v1/*</code> do jeito que já estão.</p>
-                    <div class="actions">
-                        <a href="{{.LoginURL}}" target="_blank" rel="noreferrer"><button type="button">1. Open Xiaomi AI Studio</button></a>
-                        <a id="extensionDownloadLink" href="/downloads/mimo-xiaomi-session-extension.zip"><button class="secondary" type="button">2. Download Extension ZIP</button></a>
-                    </div>
-                    <textarea class="mini" readonly>Instalação:
-1. Baixe o ZIP da extensão.
-2. Extraia no seu computador.
-3. Abra chrome://extensions ou edge://extensions.
-4. Ative "Developer mode".
-5. Clique em "Load unpacked" e selecione a pasta extraída.
-6. Abra o popup da extensão, informe a URL do proxy e a API_KEY se existir.
-7. Já logado no Xiaomi AI Studio, clique em "Import Xiaomi Session".</textarea>
-                </div>
-                <div class="section">
-                    <h3>Import Credentials</h3>
-                    <p class="muted">Se preferir, cole o cookie bruto da Xiaomi ou os três campos manualmente. Isso salva credenciais em <code>{{.AuthStore}}</code>.</p>
-                    <form method="post" action="/auth/import">
-                        <input type="password" name="api_key" placeholder="API_KEY, if configured"/>
-                        <textarea name="xiaomi_cookie" placeholder='XIAOMI_COOKIE: serviceToken="..."; userId=...; xiaomichatbot_ph="..."'></textarea>
-                        <input type="text" name="service_token" placeholder="serviceToken or SERVICE_TOKEN"/>
-                        <input type="text" name="user_id" placeholder="userId or USER_ID"/>
-                        <input type="text" name="xiaomi_chatbot_ph" placeholder="xiaomichatbot_ph or XIAOMI_CHATBOT_PH"/>
-                        <div class="actions">
-                            <button type="submit">Save Credentials</button>
+        <div class="shell">
+            <div class="card">
+                <div class="hero">
+                    <div class="hero-main">
+                        <div class="badge"><span class="dot {{if .AuthError}}warn{{end}}"></span>{{.ProductName}}</div>
+                        <h1>Use os endpoints e siga.</h1>
+                        <p class="lede">A dashboard agora é operacional: veja os endpoints, copie `curl`, confira o status da sessão importada pela extensão e teste as rotas sem rodeio.</p>
+                        {{if .AuthError}}
+                        <div class="hero-note warn">
+                            <strong>Sessão indisponível:</strong> {{.AuthError}}
                         </div>
-                    </form>
-                    <form method="post" action="/auth/clear">
-                        <input type="password" name="api_key" placeholder="API_KEY to clear, if configured"/>
-                        <div class="actions">
-                            <button class="secondary" type="submit">Clear Saved Credentials</button>
+                        {{else}}
+                        <div class="hero-note">
+                            <strong>Sessão ativa.</strong> A autenticação com a Xiaomi está sendo lida de <code>{{.AuthStore}}</code>.
                         </div>
-                    </form>
-                </div>
-
-                <div class="section">
-                    <h3>Export Current Session</h3>
-                    <p class="muted">Use isso para copiar a sessão carregada e jogar no env, evitando reimportar o cookie a cada deploy.</p>
-                    <div class="actions">
-                        <button type="button" onclick="copyAuthExport('rawCookie')">Copy Raw Cookie</button>
-                        <button type="button" class="secondary" onclick="copyAuthExport('env')">Copy Env</button>
-                        <button type="button" class="secondary" onclick="loadAuthExport()">Refresh Export</button>
+                        {{end}}
+                        <div class="actions">
+                            <a href="/downloads/mimo-xiaomi-session-extension.zip"><button type="button">Baixar extensão</button></a>
+                            <a href="/v1/models"><button class="secondary" type="button">Abrir /v1/models</button></a>
+                            <a href="/auth/status"><button class="ghost" type="button">Ver /auth/status</button></a>
+                        </div>
+                        <div class="stats-row">
+                            <div class="metric">
+                                <strong>{{.Uptime}}s</strong>
+                                <span class="muted">Uptime desta instância</span>
+                            </div>
+                            <div class="metric">
+                                <strong>{{.AuthSource}}</strong>
+                                <span class="muted">Origem da sessão ativa</span>
+                            </div>
+                            <div class="metric">
+                                <strong>{{.AvgLatency}}</strong>
+                                <span class="muted">Latência média até a Xiaomi</span>
+                            </div>
+                        </div>
                     </div>
-                    <textarea id="authExportBox" class="export-box" readonly>Clique em "Refresh Export" para carregar a sessão atual.</textarea>
+                    <div class="hero-side">
+                        <div class="section">
+                            <span class="eyebrow">Setup</span>
+                            <h2>Fluxo recomendado</h2>
+                            <textarea class="mini" readonly>1. Faça login no Xiaomi AI Studio.
+2. Baixe a extensão.
+3. Instale em chrome://extensions com "Developer mode".
+4. Abra o popup da extensão e informe a URL do proxy.
+5. Clique em "Import Xiaomi Session".
+6. Use /v1/chat/completions ou /api/chat normalmente.</textarea>
+                            <p class="muted">Sem QR code. Sem cookie bruto. A fonte de verdade da sessão fica no arquivo salvo pela extensão.</p>
+                        </div>
+                        <div class="section">
+                            <span class="eyebrow">Modelos</span>
+                            <h2>Modelos ativos</h2>
+                            <ul>{{.ModelList | safe}}</ul>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="section">
-                    <h3>Available Endpoints</h3>
-                    <ul>
-                        <li><code>POST /v1/chat/completions</code> - OpenAI compatible</li>
-                        <li><code>POST /api/chat</code> - Ollama compatible chat</li>
-                        <li><code>POST /api/generate</code> - Ollama compatible generate</li>
-                        <li><code>GET /api/tags</code> - Ollama model list</li>
-                        <li><code>GET /v1/models</code> - Dynamic model list</li>
-                        <li><code>GET /health</code> - Process and auth health</li>
-                        <li><code>GET /auth/status</code> - Stored auth diagnostics</li>
-                    </ul>
-                    <h3>Active Models</h3>
-                    <ul>{{.ModelList | safe}}</ul>
+                <div class="section" style="margin-top: 18px;">
+                    <span class="eyebrow">Endpoints</span>
+                    <h2>Catálogo rápido</h2>
+                    <p class="muted">Cada bloco abaixo já vem com um exemplo copiável para uso imediato.</p>
+                    <div class="endpoint-grid">
+                        <div class="endpoint-card">
+                            <div class="endpoint-head">
+                                <div>
+                                    <div class="method">POST</div>
+                                    <h3><code>/v1/chat/completions</code></h3>
+                                </div>
+                                <button class="secondary" type="button" onclick="copySnippet('curl-openai')">Copiar curl</button>
+                            </div>
+                            <p class="muted">Endpoint principal, compatível com OpenAI.</p>
+                            <pre id="curl-openai" class="snippet">curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mimo-v2.5-pro",
+    "messages": [
+      {"role": "user", "content": "Responda apenas: ok"}
+    ],
+    "stream": false
+  }'</pre>
+                        </div>
+                        <div class="endpoint-card">
+                            <div class="endpoint-head">
+                                <div>
+                                    <div class="method">POST</div>
+                                    <h3><code>/api/chat</code></h3>
+                                </div>
+                                <button class="secondary" type="button" onclick="copySnippet('curl-ollama-chat')">Copiar curl</button>
+                            </div>
+                            <p class="muted">Compatível com clientes Ollama.</p>
+                            <pre id="curl-ollama-chat" class="snippet">curl http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mimo-v2.5-pro",
+    "messages": [
+      {"role": "user", "content": "Olá"}
+    ]
+  }'</pre>
+                        </div>
+                        <div class="endpoint-card">
+                            <div class="endpoint-head">
+                                <div>
+                                    <div class="method">POST</div>
+                                    <h3><code>/api/generate</code></h3>
+                                </div>
+                                <button class="secondary" type="button" onclick="copySnippet('curl-generate')">Copiar curl</button>
+                            </div>
+                            <p class="muted">Fluxo de geração simples no formato Ollama.</p>
+                            <pre id="curl-generate" class="snippet">curl http://localhost:3000/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mimo-v2.5-pro",
+    "prompt": "Explique este projeto em uma frase.",
+    "stream": false
+  }'</pre>
+                        </div>
+                        <div class="endpoint-card">
+                            <div class="endpoint-head">
+                                <div>
+                                    <div class="method get">GET</div>
+                                    <h3><code>/v1/models</code>, <code>/api/tags</code>, <code>/health</code></h3>
+                                </div>
+                                <button class="secondary" type="button" onclick="copySnippet('curl-readonly')">Copiar curl</button>
+                            </div>
+                            <p class="muted">Endpoints de leitura e diagnóstico.</p>
+                            <pre id="curl-readonly" class="snippet">curl http://localhost:3000/v1/models
+curl http://localhost:3000/api/tags
+curl http://localhost:3000/health</pre>
+                        </div>
+                    </div>
                 </div>
-            </div>
 
-            <div class="grid">
-                <div class="section">
-                    <h3>Performance</h3>
-                    <p>Avg upstream latency: <strong>{{.AvgLatency}}</strong></p>
-                </div>
-                <div class="section">
-                    <h3>Token Usage Stats</h3>
-                    <ul>{{.Stats | safe}}</ul>
-                </div>
-            </div>
-
-            <div class="section" style="margin-top: 1.5rem;">
-                <h2>Route Tester</h2>
-                <p class="muted">Teste as rotas direto pela interface. Para endpoints protegidos, informe a mesma <code>API_KEY</code> usada no deploy.</p>
                 <div class="grid">
-                    <div class="stack">
-                        <div class="row">
-                            <input id="apiKey" type="password" placeholder="API_KEY opcional para Authorization: Bearer ..."/>
-                            <input id="chatModel" type="text" value="mimo-v2.5-pro" placeholder="Modelo"/>
+                    <div class="section">
+                        <span class="eyebrow">Sessão</span>
+                        <h2>Status e operação</h2>
+                        <div class="inline-meta">
+                            <span><strong>Store:</strong> <code>{{.AuthStore}}</code></span>
+                            <span><strong>Origem:</strong> {{.AuthSource}}</span>
                         </div>
-                        <div class="actions">
-                            <button type="button" onclick="callSimpleRoute('/health')">Test /health</button>
-                            <button type="button" class="secondary" onclick="callSimpleRoute('/auth/status')">Test /auth/status</button>
-                            <button type="button" class="secondary" onclick="callSimpleRoute('/auth/debug')">Test /auth/debug</button>
-                            <button type="button" class="secondary" onclick="callSimpleRoute('/v1/models')">Test /v1/models</button>
-                        </div>
-                        <textarea id="chatPayload">{
+                        <p class="muted" style="margin-top: 14px;">Se precisar renovar a autenticação, reimporte pela extensão. Se quiser limpar a sessão local, use o formulário abaixo.</p>
+                        <form method="post" action="/auth/clear">
+                            <label class="field-label" for="adminApiKey">API Key administrativa</label>
+                            <input id="adminApiKey" type="password" name="api_key" placeholder="Preencha apenas se API_KEY estiver configurada"/>
+                            <div class="actions">
+                                <button class="secondary" type="submit">Limpar sessão salva</button>
+                                <a href="/auth/debug"><button class="ghost" type="button">Abrir /auth/debug</button></a>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="section">
+                        <span class="eyebrow">Métricas</span>
+                        <h2>Uso acumulado</h2>
+                        <ul>{{.Stats | safe}}</ul>
+                    </div>
+                </div>
+
+                <div class="section full" style="margin-top: 18px;">
+                    <span class="eyebrow">Testador</span>
+                    <h2>Teste a API sem sair da página</h2>
+                    <p class="muted">Os campos abaixo estão separados por função: modelo, payload e resposta.</p>
+                    <div class="grid">
+                        <div>
+                            <label class="field-label" for="chatModel">Modelo</label>
+                            <input id="chatModel" type="text" value="mimo-v2.5-pro" placeholder="Ex.: mimo-v2.5-pro"/>
+                            <div class="actions">
+                                <button type="button" onclick="callSimpleRoute('/health')">Testar /health</button>
+                                <button type="button" class="secondary" onclick="callSimpleRoute('/auth/status')">Testar /auth/status</button>
+                                <button type="button" class="secondary" onclick="callSimpleRoute('/v1/models')">Testar /v1/models</button>
+                            </div>
+                            <label class="field-label" for="chatPayload">Payload JSON</label>
+                            <textarea id="chatPayload">{
   "model": "mimo-v2.5-pro",
   "messages": [
     {
@@ -179,28 +429,25 @@
   ],
   "stream": false
 }</textarea>
-                        <div class="actions">
-                            <button type="button" onclick="callChatCompletions(false)">Test /v1/chat/completions</button>
-                            <button type="button" class="secondary" onclick="callChatCompletions(true)">Test streaming</button>
+                            <div class="actions">
+                                <button type="button" onclick="callChatCompletions(false)">Enviar /v1/chat/completions</button>
+                                <button type="button" class="secondary" onclick="callChatCompletions(true)">Enviar streaming</button>
+                                <button type="button" class="ghost" onclick="copyPayload()">Copiar payload</button>
+                            </div>
                         </div>
-                        <p class="muted small">Se quiser, edite o JSON acima antes de enviar. O botão de streaming lê os eventos SSE e mostra tudo no painel de resposta.</p>
-                    </div>
-
-                    <div class="stack">
-                        <textarea id="requestInfo" class="mini" readonly>Pronto para testar.</textarea>
-                        <pre id="responsePanel" class="response">A resposta da rota aparece aqui.</pre>
+                        <div>
+                            <label class="field-label" for="requestInfo">Requisição</label>
+                            <textarea id="requestInfo" class="mini" readonly>Pronto para testar.</textarea>
+                            <label class="field-label" for="responsePanel">Resposta</label>
+                            <pre id="responsePanel" class="response">A resposta aparece aqui.</pre>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
         <script>
-            function buildHeaders() {
-                const headers = { "Accept": "application/json" };
-                const apiKey = document.getElementById("apiKey").value.trim();
-                if (apiKey) {
-                    headers["Authorization"] = `Bearer ${apiKey}`;
-                }
-                return headers;
+            function buildPublicHeaders() {
+                return { "Accept": "application/json" };
             }
 
             function setRequestInfo(text) {
@@ -211,42 +458,24 @@
                 document.getElementById("responsePanel").textContent = text;
             }
 
-            let authExportCache = null;
-
-            async function loadAuthExport() {
-                const headers = buildHeaders();
-                const res = await fetch("/auth/export", { headers });
-                const body = await res.text();
-                if (!res.ok) {
-                    document.getElementById("authExportBox").value = `HTTP ${res.status} ${res.statusText}\n\n${body}`;
-                    authExportCache = null;
-                    return;
-                }
-                authExportCache = JSON.parse(body);
-                document.getElementById("authExportBox").value = authExportCache.env || authExportCache.rawCookie || body;
+            async function copyText(text) {
+                await navigator.clipboard.writeText(text);
             }
 
-            async function copyAuthExport(kind) {
-                if (!authExportCache) {
-                    await loadAuthExport();
-                    if (!authExportCache) {
-                        return;
-                    }
-                }
-                const value = kind === "rawCookie" ? authExportCache.rawCookie : authExportCache.env;
-                if (!value) {
-                    document.getElementById("authExportBox").value = "Nenhum valor disponível para copiar.";
-                    return;
-                }
-                await navigator.clipboard.writeText(value);
-                document.getElementById("authExportBox").value = value;
+            async function copySnippet(id) {
+                const text = document.getElementById(id).textContent;
+                await copyText(text);
+            }
+
+            async function copyPayload() {
+                await copyText(document.getElementById("chatPayload").value);
             }
 
             async function callSimpleRoute(path) {
                 setRequestInfo(`GET ${path}`);
                 setResponse("Carregando...");
                 try {
-                    const res = await fetch(path, { headers: buildHeaders() });
+                    const res = await fetch(path, { headers: buildPublicHeaders() });
                     const body = await res.text();
                     setResponse(`HTTP ${res.status} ${res.statusText}\n\n${body}`);
                 } catch (err) {
@@ -267,16 +496,13 @@
                 payload.model = document.getElementById("chatModel").value.trim() || payload.model;
                 payload.stream = forceStream;
 
-                setRequestInfo(`POST /v1/chat/completions\nstream=${String(forceStream)}\nmodel=${payload.model}`);
+                setRequestInfo(`POST /v1/chat/completions\nstream=${String(forceStream)}\nmodel=${payload.model}\n\n${JSON.stringify(payload, null, 2)}`);
                 setResponse("Enviando...");
-
-                const headers = buildHeaders();
-                headers["Content-Type"] = "application/json";
 
                 try {
                     const res = await fetch("/v1/chat/completions", {
                         method: "POST",
-                        headers,
+                        headers: { ...buildPublicHeaders(), "Content-Type": "application/json" },
                         body: JSON.stringify(payload)
                     });
 

@@ -16,8 +16,6 @@ import (
 	"html/template"
 	"io"
 	"log"
-	"mimoproxy/internal/models"
-	"mimoproxy/internal/middleware"
 	"mimoproxy/internal/routes"
 	"mimoproxy/internal/services"
 	"net/http"
@@ -87,20 +85,6 @@ func buildStoredAuth(rawCookie string, token string, userID string, ph string) s
 	}
 }
 
-func buildRawCookieFromAuth(auth models.Auth) string {
-	if strings.TrimSpace(auth.Cookie) != "" {
-		return strings.TrimSpace(auth.Cookie)
-	}
-	if strings.TrimSpace(auth.Token) == "" || strings.TrimSpace(auth.UserID) == "" || strings.TrimSpace(auth.Ph) == "" {
-		return ""
-	}
-	return fmt.Sprintf(`serviceToken="%s"; userId=%s; xiaomichatbot_ph="%s"`, auth.Token, auth.UserID, auth.Ph)
-}
-
-func buildEnvExport(auth models.Auth) string {
-	return fmt.Sprintf("SERVICE_TOKEN=%s\nUSER_ID=%s\nXIAOMI_CHATBOT_PH=%s", auth.Token, auth.UserID, auth.Ph)
-}
-
 func zipDirectory(root string) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -141,14 +125,6 @@ func zipDirectory(root string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func hasEnvAuth() bool {
-	return strings.TrimSpace(os.Getenv("XIAOMI_COOKIE")) != "" ||
-		strings.TrimSpace(os.Getenv("XIAOMI_COOKIE_RAW")) != "" ||
-		strings.TrimSpace(os.Getenv("SERVICE_TOKEN")) != "" ||
-		strings.TrimSpace(os.Getenv("USER_ID")) != "" ||
-		strings.TrimSpace(os.Getenv("XIAOMI_CHATBOT_PH")) != ""
-}
-
 func hasStoredAuth(stored services.StoredAuth, storedErr error) bool {
 	return storedErr == nil &&
 		(strings.TrimSpace(stored.XiaomiCookie) != "" ||
@@ -160,9 +136,6 @@ func hasStoredAuth(stored services.StoredAuth, storedErr error) bool {
 func detectAuthSource(stored services.StoredAuth, storedErr error) string {
 	if hasStoredAuth(stored, storedErr) {
 		return "data/auth.json"
-	}
-	if hasEnvAuth() {
-		return "environment"
 	}
 	return "none"
 }
@@ -307,6 +280,7 @@ func main() {
 		}
 
 		c.HTML(http.StatusOK, "dashboard.html", gin.H{
+			"ProductName": "flip-mimo-api",
 			"Uptime":      fmt.Sprintf("%.0f", time.Since(startTime).Seconds()),
 			"ModelList":   modelListHtml,
 			"AvgLatency":  avgTimeStr,
@@ -356,25 +330,11 @@ func main() {
 		}
 
 		stored, storedErr := services.LoadStoredAuth()
-		serviceToken := os.Getenv("SERVICE_TOKEN")
-		userID := os.Getenv("USER_ID")
-		chatbotPH := os.Getenv("XIAOMI_CHATBOT_PH")
-		rawCookie := os.Getenv("XIAOMI_COOKIE")
-		if strings.TrimSpace(rawCookie) == "" {
-			rawCookie = os.Getenv("XIAOMI_COOKIE_RAW")
-		}
-
 		auth, authErr := services.GetSelectedAuth()
 		c.JSON(http.StatusOK, gin.H{
 			"configured": authErr == nil,
 			"authError":  errString(authErr),
 			"authSource": detectAuthSource(stored, storedErr),
-			"env": gin.H{
-				"SERVICE_TOKEN":     maskValue(serviceToken),
-				"USER_ID":           maskValue(userID),
-				"XIAOMI_CHATBOT_PH": maskValue(chatbotPH),
-				"XIAOMI_COOKIE":     maskValue(rawCookie),
-			},
 			"stored": gin.H{
 				"loadError":         errString(storedErr),
 				"XIAOMI_COOKIE":     maskValue(stored.XiaomiCookie),
@@ -387,27 +347,6 @@ func main() {
 				"userID": maskValue(auth.UserID),
 				"ph":    maskValue(auth.Ph),
 			},
-		})
-	})
-
-	r.GET("/auth/export", func(c *gin.Context) {
-		if !validateSetupAccess(c) {
-			return
-		}
-
-		stored, storedErr := services.LoadStoredAuth()
-		auth, err := services.GetSelectedAuth()
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Auth is not configured", "details": err.Error()})
-			return
-		}
-
-		rawCookie := buildRawCookieFromAuth(auth)
-		c.JSON(http.StatusOK, gin.H{
-			"authSource": detectAuthSource(stored, storedErr),
-			"rawCookie":  rawCookie,
-			"env":        buildEnvExport(auth),
-			"storePath":  services.AuthStorePathForDisplay(),
 		})
 	})
 
@@ -525,7 +464,7 @@ func main() {
 	})
 
 	// Mount chat routes
-	routes.RegisterChatRoutes(r, middleware.ValidateApiKey())
+	routes.RegisterChatRoutes(r, nil)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"

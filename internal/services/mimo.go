@@ -18,7 +18,6 @@ import (
 	"mimoproxy/internal/models"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -306,37 +305,16 @@ func ValidateAuthInput(rawCookie string, token string, userID string, ph string)
 
 func GetSelectedAuth() (models.Auth, error) {
 	stored, err := LoadStoredAuth()
-	if err == nil {
-		if cleanEnvValue(stored.ServiceToken) != "" || cleanEnvValue(stored.UserID) != "" || cleanEnvValue(stored.XiaomiChatbot) != "" {
-			return buildAuth(stored.ServiceToken, stored.UserID, stored.XiaomiChatbot, stored.XiaomiCookie)
-		}
-		if cleanEnvValue(stored.XiaomiCookie) != "" {
-			return buildAuth("", "", "", stored.XiaomiCookie)
-		}
+	if err != nil {
+		return models.Auth{}, err
 	}
-
-	rawCookie := cleanEnvValue(os.Getenv("XIAOMI_COOKIE"))
-	if rawCookie == "" {
-		rawCookie = cleanEnvValue(os.Getenv("XIAOMI_COOKIE_RAW"))
+	if cleanEnvValue(stored.ServiceToken) != "" || cleanEnvValue(stored.UserID) != "" || cleanEnvValue(stored.XiaomiChatbot) != "" {
+		return buildAuth(stored.ServiceToken, stored.UserID, stored.XiaomiChatbot, stored.XiaomiCookie)
 	}
-	if rawCookie != "" {
-		return buildAuth("", "", "", rawCookie)
+	if cleanEnvValue(stored.XiaomiCookie) != "" {
+		return buildAuth("", "", "", stored.XiaomiCookie)
 	}
-
-	token := cleanEnvValue(os.Getenv("SERVICE_TOKEN"))
-	userID := cleanEnvValue(os.Getenv("USER_ID"))
-	ph := cleanEnvValue(os.Getenv("XIAOMI_CHATBOT_PH"))
-
-	switch {
-	case token == "":
-		return models.Auth{}, errors.New("SERVICE_TOKEN is not configured")
-	case userID == "":
-		return models.Auth{}, errors.New("USER_ID is not configured")
-	case ph == "":
-		return models.Auth{}, errors.New("XIAOMI_CHATBOT_PH is not configured")
-	}
-
-	return buildAuth(token, userID, ph, "")
+	return models.Auth{}, errors.New("Xiaomi session not configured. Import a session with the Chrome extension or POST /auth/import")
 }
 
 func ExtractText(content interface{}, stripArtifacts bool) string {

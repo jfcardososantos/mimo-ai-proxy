@@ -587,6 +587,7 @@ func handleChatCompletions(c *gin.Context) {
 		maxRetries = 2
 	}
 	var resp *http.Response
+	statToken := ""
 
 	customHeaders := make(map[string]string)
 	for k, v := range c.Request.Header {
@@ -599,6 +600,7 @@ func handleChatCompletions(c *gin.Context) {
 			utils.SendError(c, http.StatusInternalServerError, "Invalid Xiaomi auth configuration", "server_error", nil)
 			return
 		}
+		statToken = auth.Token
 
 		resp, err = sendMimoChatRequest(auth, payload, customHeaders, completionID)
 		if err == nil {
@@ -658,11 +660,11 @@ func handleChatCompletions(c *gin.Context) {
 		c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(initialBytes)))
 		c.Writer.Flush()
 
-		processStream(c, bodyReader, completionID, targetModel, historyID, query, input.ParallelToolCalls, agentMode)
+		processStream(c, bodyReader, completionID, targetModel, historyID, query, statToken, input.ParallelToolCalls, agentMode)
 		return
 	}
 
-	processNonStream(c, bodyReader, completionID, targetModel, cacheKey, historyID, query, input.ParallelToolCalls, len(input.Tools) == 0, agentMode)
+	processNonStream(c, bodyReader, completionID, targetModel, cacheKey, historyID, query, statToken, input.ParallelToolCalls, len(input.Tools) == 0, agentMode)
 }
 
 func assistantTranscript(content, reasoning string) string {
@@ -746,7 +748,7 @@ func handleCompletions(c *gin.Context) {
 	handleChatCompletions(c)
 }
 
-func processStream(c *gin.Context, body io.Reader, completionID, model string, userID string, query string, parallelToolCalls *bool, agentMode bool) {
+func processStream(c *gin.Context, body io.Reader, completionID, model string, userID string, query string, statToken string, parallelToolCalls *bool, agentMode bool) {
 	reader := bufio.NewReaderSize(body, 16*1024*1024)
 
 	var inThinking bool
@@ -829,7 +831,7 @@ func processStream(c *gin.Context, body io.Reader, completionID, model string, u
 		usage.CompletionTokens = len(fullText.String()) / 4
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
-	IncrementTokenStat(os.Getenv("SERVICE_TOKEN"), usage.TotalTokens)
+	IncrementTokenStat(statToken, usage.TotalTokens)
 
 	services.SaveMessage(userID, "asst_"+completionID, "assistant", assistantTranscript(fullText.String(), reasoningText.String()))
 
@@ -871,7 +873,7 @@ func storePendingToolCalls(sessionID string, toolCalls []models.ToolCall) {
 	}
 }
 
-func processNonStream(c *gin.Context, body io.Reader, completionID, model string, cacheKey string, userID string, query string, parallelToolCalls *bool, allowResponseCache bool, agentMode bool) {
+func processNonStream(c *gin.Context, body io.Reader, completionID, model string, cacheKey string, userID string, query string, statToken string, parallelToolCalls *bool, allowResponseCache bool, agentMode bool) {
 	respBody, _ := io.ReadAll(body)
 	events := strings.Split(string(respBody), "\n\n")
 
@@ -932,7 +934,7 @@ func processNonStream(c *gin.Context, body io.Reader, completionID, model string
 		usage.CompletionTokens = fullText.Len() / 4
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
-	IncrementTokenStat(os.Getenv("SERVICE_TOKEN"), usage.TotalTokens)
+	IncrementTokenStat(statToken, usage.TotalTokens)
 
 	type nonStreamChoice struct {
 		Index        int          `json:"index"`

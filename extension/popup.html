@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Mimo Xiaomi Session Importer</title>
+    <title>flip-mimo-api Session Importer</title>
     <style>
       body {
         margin: 0;
@@ -74,14 +74,14 @@
     </style>
   </head>
   <body>
-    <h1>Mimo Xiaomi Session Importer</h1>
+    <h1>flip-mimo-api Importer</h1>
     <p class="hint">Abra o Xiaomi AI Studio logado neste navegador. Depois informe a URL do proxy e importe a sessão.</p>
 
     <label for="proxyUrl">Proxy URL</label>
     <input id="proxyUrl" type="url" placeholder="https://seu-proxy.exemplo.com">
 
-    <label for="apiKey">API Key</label>
-    <input id="apiKey" type="password" placeholder="Opcional">
+    <label for="apiKey">API Key administrativa</label>
+    <input id="apiKey" type="password" placeholder="Opcional, só para /auth/import protegido">
 
     <div class="row">
       <button id="openXiaomi" type="button" class="secondary">Open Xiaomi</button>
