@@ -154,6 +154,8 @@ Lista os modelos visíveis pela sessão autenticada na Xiaomi.
 
 #### `POST /api/chat`
 
+Se `stream` não for enviado, o proxy assume `false`.
+
 ```bash
 curl http://localhost:3000/api/chat \
   -H "Content-Type: application/json" \
@@ -168,6 +170,8 @@ curl http://localhost:3000/api/chat \
 #### `POST /api/generate`
 
 Compatível com o formato `generate` do Ollama.
+
+Se `stream` não for enviado, o proxy assume `false`.
 
 #### `GET /api/tags`
 
@@ -225,8 +229,8 @@ O projeto converte ferramentas do formato OpenAI para o formato esperado pelo Mi
 
 Recomendações:
 
-- prefira `stream: true` para agentes
 - mantenha o `model` explícito
+- envie `stream: true` apenas quando quiser resposta em streaming
 - use `parallel_tool_calls: false` se o cliente tiver dificuldade com múltiplas tools por turno
 
 ## Persistência

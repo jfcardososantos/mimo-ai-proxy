@@ -337,7 +337,7 @@
                                 </div>
                                 <button class="secondary" type="button" onclick="copySnippet('curl-ollama-chat')">Copiar curl</button>
                             </div>
-                            <p class="muted">Compatível com clientes Ollama.</p>
+                            <p class="muted">Compatível com clientes Ollama. Se <code>stream</code> não for enviado, o padrão é <code>false</code>.</p>
                             <pre id="curl-ollama-chat" class="snippet">curl http://localhost:3000/api/chat \
   -H "Content-Type: application/json" \
   -d '{
@@ -355,7 +355,7 @@
                                 </div>
                                 <button class="secondary" type="button" onclick="copySnippet('curl-generate')">Copiar curl</button>
                             </div>
-                            <p class="muted">Fluxo de geração simples no formato Ollama.</p>
+                            <p class="muted">Fluxo de geração simples no formato Ollama. Se <code>stream</code> não for enviado, o padrão é <code>false</code>.</p>
                             <pre id="curl-generate" class="snippet">curl http://localhost:3000/api/generate \
   -H "Content-Type: application/json" \
   -d '{

@@ -124,7 +124,7 @@ func handleOllamaChat(c *gin.Context) {
 	}
 
 	chatMessages := translateOllamaMessages(input.Messages)
-	stream := input.Stream == nil || *input.Stream
+	stream := input.Stream != nil && *input.Stream
 	thinkingRequested := ollamaThinkingEnabled(input.Think)
 
 	runOllamaRequest(c, ollamaRequestSpec{
@@ -166,7 +166,7 @@ func handleOllamaGenerate(c *gin.Context) {
 	}
 	messages = append(messages, models.Message{Role: "user", Content: prompt})
 
-	stream := input.Stream == nil || *input.Stream
+	stream := input.Stream != nil && *input.Stream
 	thinkingRequested := ollamaThinkingEnabled(input.Think)
 
 	runOllamaRequest(c, ollamaRequestSpec{
