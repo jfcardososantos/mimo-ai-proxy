@@ -31,6 +31,37 @@ func TestParseToolCallsTrailingJSON(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsOpenAIShape(t *testing.T) {
+	text := `{"tool_calls":[{"id":"call_123","type":"function","function":{"name":"replace_in_file","arguments":"{\"path\":\"main.go\",\"old\":\"a\",\"new\":\"b\"}"}}]}`
+	clean, calls := ParseToolCalls(text)
+	if clean != "" {
+		t.Fatalf("expected empty clean text, got %q", clean)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(calls))
+	}
+	if calls[0].ID != "call_123" {
+		t.Fatalf("expected id to be preserved, got %s", calls[0].ID)
+	}
+	if calls[0].Function.Name != "replace_in_file" {
+		t.Fatalf("unexpected tool name: %s", calls[0].Function.Name)
+	}
+	if !strings.Contains(calls[0].Function.Arguments, "main.go") {
+		t.Fatalf("unexpected arguments: %s", calls[0].Function.Arguments)
+	}
+}
+
+func TestParseToolCallsFencedOpenAIShape(t *testing.T) {
+	text := "Vou editar.\n```json\n{\"tool_call\":{\"name\":\"execute_command\",\"arguments\":{\"command\":\"go test ./...\"}}}\n```"
+	clean, calls := ParseToolCalls(text)
+	if strings.Contains(clean, "tool_call") {
+		t.Fatalf("expected clean text without fenced tool json, got %q", clean)
+	}
+	if len(calls) != 1 || calls[0].Function.Name != "execute_command" {
+		t.Fatalf("expected execute_command call, got %+v", calls)
+	}
+}
+
 func TestShouldEnableWebSearch(t *testing.T) {
 	if !ShouldEnableWebSearch("mimo-search", false, nil) {
 		t.Fatal("expected search in model name to enable web search")

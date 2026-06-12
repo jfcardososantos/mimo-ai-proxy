@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"encoding/json"
 	"mimoproxy/internal/models"
 	"os"
 	"strconv"
@@ -115,6 +116,7 @@ func FormatToolsAsInstructionsCompact(tools []models.Tool, toolChoice string) st
 	}
 	var sb strings.Builder
 	sb.WriteString("\n# Tools — call with <tool_call>{\"name\":\"fn\",\"arguments\":{...}}</tool_call>\n")
+	sb.WriteString("Use only valid JSON inside <tool_call>. Do not wrap tool calls in Markdown fences.\n")
 	for _, tool := range tools {
 		if tool.Type != "function" {
 			continue
@@ -132,10 +134,28 @@ func FormatToolsAsInstructionsCompact(tools []models.Tool, toolChoice string) st
 			}
 		}
 		sb.WriteByte('\n')
+		if fn.Parameters != nil {
+			params, _ := json.Marshal(fn.Parameters)
+			paramsText := string(params)
+			if len(paramsText) > 2400 {
+				paramsText = paramsText[:2400] + "...[schema truncated]"
+			}
+			sb.WriteString("  parameters: ")
+			sb.WriteString(paramsText)
+			sb.WriteByte('\n')
+		}
 	}
 	sb.WriteString("After planning, emit tool_call XML immediately. Do not stop with only a plan.\n")
+	if toolChoice == "none" {
+		sb.WriteString("tool_choice: do not call tools this turn.\n")
+		return sb.String()
+	}
 	if toolChoice == "required" || toolChoice == "any" {
 		sb.WriteString("tool_choice: you MUST call a tool this turn.\n")
+	} else if toolChoice != "" && toolChoice != "auto" {
+		sb.WriteString("tool_choice: call only ")
+		sb.WriteString(toolChoice)
+		sb.WriteString(" if a tool is needed.\n")
 	}
 	return sb.String()
 }

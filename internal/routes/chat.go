@@ -298,7 +298,7 @@ func buildConversationQuery(messages []models.Message, toolInstructions string) 
 
 	for _, message := range messages {
 		if message.Role == "system" {
-			systemPrompt = services.ExtractText(message.Content, false) + toolInstructions
+			systemPrompt = strings.TrimSpace(services.ExtractText(message.Content, false))
 			break
 		}
 	}
@@ -307,19 +307,53 @@ func buildConversationQuery(messages []models.Message, toolInstructions string) 
 		if message.Role == "system" {
 			continue
 		}
-		formatted := utils.FormatMessageForMiMo(message)
+		formatted := formatConversationTurn(message)
 		if strings.TrimSpace(formatted) != "" {
 			processedMessages = append(processedMessages, formatted)
 		}
 	}
 
 	if systemPrompt != "" {
+		if strings.TrimSpace(toolInstructions) != "" {
+			systemPrompt += "\n\n" + strings.TrimSpace(toolInstructions)
+		}
 		return systemPrompt + "\n\n" + strings.Join(processedMessages, "\n\n")
 	}
 	if toolInstructions != "" {
 		return strings.TrimSpace(toolInstructions) + "\n\n" + strings.Join(processedMessages, "\n\n")
 	}
 	return strings.Join(processedMessages, "\n\n")
+}
+
+func formatConversationTurn(message models.Message) string {
+	formatted := utils.FormatMessageForMiMo(message)
+	if strings.TrimSpace(formatted) == "" {
+		return ""
+	}
+
+	switch message.Role {
+	case "user":
+		return "User:\n" + formatted
+	case "assistant":
+		return "Assistant:\n" + formatted
+	case "tool":
+		if message.ToolCallID != "" {
+			return "Tool result (" + message.ToolCallID + "):\n" + formatted
+		}
+		return "Tool result:\n" + formatted
+	case "developer":
+		return "Developer instructions:\n" + formatted
+	default:
+		return roleLabel(message.Role) + ":\n" + formatted
+	}
+}
+
+func roleLabel(role string) string {
+	role = strings.TrimSpace(role)
+	if role == "" {
+		return "Message"
+	}
+	return strings.ToUpper(role[:1]) + role[1:]
 }
 
 func truncateConversationQuery(query string, systemPrefix string, maxChars int) string {
@@ -538,7 +572,10 @@ func handleChatCompletions(c *gin.Context) {
 		systemPrefix := ""
 		for _, m := range input.Messages {
 			if m.Role == "system" {
-				systemPrefix = services.ExtractText(m.Content, false) + toolInstructions
+				systemPrefix = strings.TrimSpace(services.ExtractText(m.Content, false))
+				if strings.TrimSpace(toolInstructions) != "" {
+					systemPrefix += "\n\n" + strings.TrimSpace(toolInstructions)
+				}
 				break
 			}
 		}
@@ -684,13 +721,13 @@ func resolveToolChoice(raw interface{}) string {
 	case string:
 		return v
 	case map[string]interface{}:
-		if t, ok := v["type"].(string); ok {
-			return t
-		}
 		if fn, ok := v["function"].(map[string]interface{}); ok {
 			if name, ok := fn["name"].(string); ok {
 				return name
 			}
+		}
+		if t, ok := v["type"].(string); ok {
+			return t
 		}
 	}
 	return ""

@@ -81,6 +81,7 @@ type Message struct {
 	Content          interface{} `json:"content"` // can be string or []ContentPart
 	ReasoningContent string      `json:"reasoning_content,omitempty"`
 	Name             string      `json:"name,omitempty"`
+	ToolCallID       string      `json:"tool_call_id,omitempty"`
 	ToolCalls        []ToolCall  `json:"tool_calls,omitempty"`
 }
 

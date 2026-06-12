@@ -14,7 +14,10 @@ import (
 	"strings"
 )
 
-var trailingToolJSONRegex = regexp.MustCompile(`(?s)\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*.*\}$`)
+var (
+	trailingToolJSONRegex = regexp.MustCompile(`(?s)\{\s*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*.*\}$`)
+	fencedJSONRegex      = regexp.MustCompile("(?s)```(?:json)?\\s*(.*?)\\s*```")
+)
 
 // FormatToolsAsInstructions mirrors the simpler behavior from the first project version.
 func FormatToolsAsInstructions(tools []models.Tool) string {
@@ -23,8 +26,8 @@ func FormatToolsAsInstructions(tools []models.Tool) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("\n\n# Tools\n\nYou have access to the following tools. To call a tool, you MUST use the following XML format:\n")
-	sb.WriteString("<tool_call>{\"name\": \"function_name\", \"arguments\": {\"arg1\": \"value1\"}}</tool_call>\n\n")
+	sb.WriteString("\n\n# Tools\n\nYou have access to the following tools. To call a tool, you MUST use exactly this XML format and no Markdown fence:\n")
+	sb.WriteString("<tool_call>{\"name\":\"function_name\",\"arguments\":{\"arg1\":\"value1\"}}</tool_call>\n\n")
 	sb.WriteString("Available tools:\n")
 
 	for _, tool := range tools {
@@ -56,8 +59,16 @@ func FormatToolsAsInstructionsWithChoice(tools []models.Tool, toolChoice string)
 	sb.WriteString("\nTool choice policy: ")
 	sb.WriteString(toolChoice)
 	sb.WriteString(".\n")
+	if toolChoice == "none" {
+		sb.WriteString("Do NOT call tools this turn. Answer normally using the provided context.\n")
+		return sb.String()
+	}
 	if toolChoice == "required" || toolChoice == "any" {
 		sb.WriteString("You MUST respond with at least one tool call using the XML format above.\n")
+	} else {
+		sb.WriteString("You MUST call only this function name if a tool is needed: ")
+		sb.WriteString(toolChoice)
+		sb.WriteString(".\n")
 	}
 	return sb.String()
 }
@@ -69,6 +80,7 @@ func agentToolExecutionRules() string {
 - Do NOT say you "will" read files or run commands without immediately emitting the matching <tool_call>.
 - Each turn that requires action must include at least one <tool_call>...</tool_call> block.
 - Plain text without tool_call XML is only valid when the task is fully complete and no tools are needed.
+- Tool results from the client appear as <tool_result ...>. Use them as observations and continue with the next required tool call or final answer.
 `
 }
 
@@ -98,7 +110,8 @@ func AssignToolCallIndexes(toolCalls []models.ToolCall) []models.ToolCall {
 	return toolCalls
 }
 
-// ParseToolCalls mirrors the simpler, more permissive parser from the first project version.
+// ParseToolCalls accepts the XML bridge format plus common JSON shapes emitted by
+// models despite the instruction to use XML.
 func ParseToolCalls(text string) (string, []models.ToolCall) {
 	var toolCalls []models.ToolCall
 	cleanText := text
@@ -112,56 +125,17 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 		}
 
 		jsonStr := strings.TrimSpace(match[1])
-		var toolCallData struct {
-			Name      string      `json:"name"`
-			Arguments interface{} `json:"arguments"`
-		}
-		if err := json.Unmarshal([]byte(jsonStr), &toolCallData); err == nil {
-			var argsStr string
-			switch v := toolCallData.Arguments.(type) {
-			case string:
-				argsStr = v
-			default:
-				b, _ := json.Marshal(v)
-				argsStr = string(b)
-			}
-
-			toolCalls = append(toolCalls, models.ToolCall{
-				ID:   "call_" + GenerateID(),
-				Type: "function",
-				Function: models.ToolFunction{
-					Name:      toolCallData.Name,
-					Arguments: argsStr,
-				},
-			})
+		if parsed := parseToolCallJSON(jsonStr); len(parsed) > 0 {
+			toolCalls = append(toolCalls, parsed...)
 			cleanText = strings.Replace(cleanText, match[0], "", 1)
 		}
 	}
 
 	if len(toolCalls) == 0 {
-		trimmedText := strings.TrimSpace(text)
-		if strings.HasPrefix(trimmedText, "{") && strings.HasSuffix(trimmedText, "}") {
-			var toolCallData struct {
-				Name      string      `json:"name"`
-				Arguments interface{} `json:"arguments"`
-			}
-			if err := json.Unmarshal([]byte(trimmedText), &toolCallData); err == nil && toolCallData.Name != "" && toolCallData.Arguments != nil {
-				var argsStr string
-				switch v := toolCallData.Arguments.(type) {
-				case string:
-					argsStr = v
-				default:
-					b, _ := json.Marshal(v)
-					argsStr = string(b)
-				}
-				toolCalls = append(toolCalls, models.ToolCall{
-					ID:   "call_" + GenerateID(),
-					Type: "function",
-					Function: models.ToolFunction{
-						Name:      toolCallData.Name,
-						Arguments: argsStr,
-					},
-				})
+		trimmedText := stripMarkdownFence(strings.TrimSpace(text))
+		if strings.HasPrefix(trimmedText, "{") || strings.HasPrefix(trimmedText, "[") {
+			if parsed := parseToolCallJSON(trimmedText); len(parsed) > 0 {
+				toolCalls = append(toolCalls, parsed...)
 				cleanText = ""
 			}
 		}
@@ -169,61 +143,33 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 
 	if len(toolCalls) == 0 {
 		trimmedText := strings.TrimSpace(text)
-		trimmedText = strings.TrimPrefix(trimmedText, "```json")
-		trimmedText = strings.TrimPrefix(trimmedText, "```")
-		trimmedText = strings.TrimSuffix(trimmedText, "```")
-		trimmedText = strings.TrimSpace(trimmedText)
+		for _, match := range fencedJSONRegex.FindAllStringSubmatch(trimmedText, -1) {
+			if len(match) < 2 {
+				continue
+			}
+			if parsed := parseToolCallJSON(strings.TrimSpace(match[1])); len(parsed) > 0 {
+				toolCalls = append(toolCalls, parsed...)
+				cleanText = strings.TrimSpace(strings.Replace(cleanText, match[0], "", 1))
+				break
+			}
+		}
+	}
+
+	if len(toolCalls) == 0 {
+		trimmedText := stripMarkdownFence(strings.TrimSpace(text))
 
 		if match := trailingToolJSONRegex.FindString(trimmedText); match != "" {
 			idx := strings.LastIndex(trimmedText, match)
 			candidate := strings.TrimSpace(trimmedText[idx:])
-			var toolCallData struct {
-				Name      string      `json:"name"`
-				Arguments interface{} `json:"arguments"`
-			}
-			if err := json.Unmarshal([]byte(candidate), &toolCallData); err == nil && toolCallData.Name != "" && toolCallData.Arguments != nil {
-				var argsStr string
-				switch v := toolCallData.Arguments.(type) {
-				case string:
-					argsStr = v
-				default:
-					b, _ := json.Marshal(v)
-					argsStr = string(b)
-				}
-				toolCalls = append(toolCalls, models.ToolCall{
-					ID:   "call_" + GenerateID(),
-					Type: "function",
-					Function: models.ToolFunction{
-						Name:      toolCallData.Name,
-						Arguments: argsStr,
-					},
-				})
+			if parsed := parseToolCallJSON(candidate); len(parsed) > 0 {
+				toolCalls = append(toolCalls, parsed...)
 				cleanText = strings.TrimSpace(trimmedText[:idx])
 			}
 		} else if idx := strings.LastIndex(trimmedText, `{"name"`); idx != -1 {
 			candidate := strings.TrimSpace(trimmedText[idx:])
 			if strings.HasSuffix(candidate, "}") {
-				var toolCallData struct {
-					Name      string      `json:"name"`
-					Arguments interface{} `json:"arguments"`
-				}
-				if err := json.Unmarshal([]byte(candidate), &toolCallData); err == nil && toolCallData.Name != "" && toolCallData.Arguments != nil {
-					var argsStr string
-					switch v := toolCallData.Arguments.(type) {
-					case string:
-						argsStr = v
-					default:
-						b, _ := json.Marshal(v)
-						argsStr = string(b)
-					}
-					toolCalls = append(toolCalls, models.ToolCall{
-						ID:   "call_" + GenerateID(),
-						Type: "function",
-						Function: models.ToolFunction{
-							Name:      toolCallData.Name,
-							Arguments: argsStr,
-						},
-					})
+				if parsed := parseToolCallJSON(candidate); len(parsed) > 0 {
+					toolCalls = append(toolCalls, parsed...)
 					cleanText = strings.TrimSpace(trimmedText[:idx])
 				}
 			}
@@ -232,6 +178,103 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 
 	cleanText = strings.TrimSpace(cleanText)
 	return cleanText, toolCalls
+}
+
+func stripMarkdownFence(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "```json")
+	s = strings.TrimPrefix(s, "```")
+	s = strings.TrimSuffix(s, "```")
+	return strings.TrimSpace(s)
+}
+
+func parseToolCallJSON(raw string) []models.ToolCall {
+	raw = stripMarkdownFence(raw)
+	if raw == "" {
+		return nil
+	}
+
+	var value interface{}
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return nil
+	}
+	return parseToolCallValue(value)
+}
+
+func parseToolCallValue(value interface{}) []models.ToolCall {
+	switch v := value.(type) {
+	case []interface{}:
+		var calls []models.ToolCall
+		for _, item := range v {
+			calls = append(calls, parseToolCallValue(item)...)
+		}
+		return calls
+	case map[string]interface{}:
+		if nested, ok := v["tool_calls"]; ok {
+			return parseToolCallValue(nested)
+		}
+		if nested, ok := v["tool_call"]; ok {
+			return parseToolCallValue(nested)
+		}
+		if nested, ok := v["calls"]; ok {
+			return parseToolCallValue(nested)
+		}
+		return parseSingleToolCall(v)
+	default:
+		return nil
+	}
+}
+
+func parseSingleToolCall(data map[string]interface{}) []models.ToolCall {
+	id, _ := data["id"].(string)
+	callType, _ := data["type"].(string)
+	if callType == "" {
+		callType = "function"
+	}
+
+	name, _ := data["name"].(string)
+	args := data["arguments"]
+
+	if fn, ok := data["function"].(map[string]interface{}); ok {
+		if n, ok := fn["name"].(string); ok {
+			name = n
+		}
+		if a, ok := fn["arguments"]; ok {
+			args = a
+		}
+	}
+
+	if name == "" {
+		return nil
+	}
+	if args == nil {
+		args = map[string]interface{}{}
+	}
+
+	argsStr := "{}"
+	switch v := args.(type) {
+	case string:
+		if strings.TrimSpace(v) != "" {
+			argsStr = strings.TrimSpace(v)
+		}
+	default:
+		b, err := json.Marshal(v)
+		if err == nil && len(b) > 0 {
+			argsStr = string(b)
+		}
+	}
+
+	if id == "" {
+		id = "call_" + GenerateID()
+	}
+	return []models.ToolCall{{
+		ID:   id,
+		Type: callType,
+		Function: models.ToolFunction{
+			Name:      name,
+			Arguments: argsStr,
+		},
+	}}
 }
 
 // NormalizeToolCalls is intentionally a no-op to avoid proxy-side mutation of the model output.
@@ -272,6 +315,9 @@ func FormatMessageForMiMo(message models.Message) string {
 					}
 				}
 			}
+		}
+		if message.ToolCallID != "" {
+			return fmt.Sprintf("<tool_result tool_call_id=\"%s\">%s</tool_result>", message.ToolCallID, contentStr)
 		}
 		return fmt.Sprintf("<tool_result>%s</tool_result>", contentStr)
 	}
