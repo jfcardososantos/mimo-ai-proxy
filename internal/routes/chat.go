@@ -36,7 +36,7 @@ var (
 
 var (
 	agentLocationOnlyRegex = regexp.MustCompile(`(?i)^\s*(?:/[^\n]+|[A-Za-z]:\\[^\n]+|\.{0,2}/[^\n]+)\.(?:tsx|ts|jsx|js|css|scss|sass|less|html|json|md|mdx|go|py|php|vue|svelte|astro|yml|yaml)(?::|\s+)\d+(?::|\s+)\d+\s*$`)
-	agentPathTokenRegex    = regexp.MustCompile(`(?i)(?:/[^\s]+|[A-Za-z]:\\[^\s]+|\.{1,2}/[^\s]+)\.(?:tsx|ts|jsx|js|css|scss|sass|less|html|json|md|mdx|go|py|php|vue|svelte|astro|yml|yaml)`)
+	agentPathLocationRegex = regexp.MustCompile(`(?i)((?:/[^\s]+|[A-Za-z]:\\[^\s]+|\.{1,2}/[^\s]+)\.(?:tsx|ts|jsx|js|css|scss|sass|less|html|json|md|mdx|go|py|php|vue|svelte|astro|yml|yaml))(?:(?::|\s+)\d+(?::|\s+)\d+)?`)
 )
 
 func AddResponseTime(t int64) {
@@ -1176,21 +1176,28 @@ func synthesizePathReadToolCalls(result parsedMimoChat, tools []models.Tool, par
 
 func extractPathOnlyResponse(text string) []string {
 	text = strings.TrimSpace(text)
-	if text == "" || agentLocationOnlyRegex.MatchString(text) {
+	if text == "" {
 		return nil
 	}
 
-	matches := agentPathTokenRegex.FindAllString(text, -1)
+	matches := agentPathLocationRegex.FindAllStringSubmatch(text, -1)
 	if len(matches) == 0 {
 		return nil
 	}
 
-	remaining := agentPathTokenRegex.ReplaceAllString(text, "")
+	remaining := agentPathLocationRegex.ReplaceAllString(text, "")
 	remaining = strings.TrimSpace(strings.Trim(remaining, ",;|`'\"()[]{}"))
 	if remaining != "" {
 		return nil
 	}
-	return matches
+
+	paths := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) > 1 {
+			paths = append(paths, match[1])
+		}
+	}
+	return paths
 }
 
 func selectReadTool(tools []models.Tool) (string, string) {

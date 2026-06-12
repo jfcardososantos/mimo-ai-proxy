@@ -25,6 +25,15 @@ func TestExtractPathOnlyResponse(t *testing.T) {
 		t.Fatalf("expected 2 paths, got %d", len(paths))
 	}
 
+	withLocations := "/Users/jfcardososantos/Documents/alfst-homepage/src/app/budget/page.tsx 80 30 /Users/jfcardososantos/Documents/alfst-homepage/src/app/contact/page.tsx 80 30"
+	paths = extractPathOnlyResponse(withLocations)
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 paths with locations, got %d", len(paths))
+	}
+	if strings.Contains(paths[0], "80") || strings.Contains(paths[1], "80") {
+		t.Fatalf("expected returned paths without line/column, got %+v", paths)
+	}
+
 	final := "Concluí ajustes em /Users/me/app/page.tsx e /Users/me/app/contact/page.tsx."
 	if paths := extractPathOnlyResponse(final); len(paths) != 0 {
 		t.Fatalf("expected normal final response not to be path-only, got %+v", paths)
