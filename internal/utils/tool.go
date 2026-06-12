@@ -137,6 +137,9 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 			if parsed := parseToolCallJSON(trimmedText); len(parsed) > 0 {
 				toolCalls = append(toolCalls, parsed...)
 				cleanText = ""
+			} else if parsed, consumed := parseToolCallJSONSequence(trimmedText); len(parsed) > 0 {
+				toolCalls = append(toolCalls, parsed...)
+				cleanText = strings.TrimSpace(trimmedText[consumed:])
 			}
 		}
 	}
@@ -147,7 +150,12 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 			if len(match) < 2 {
 				continue
 			}
-			if parsed := parseToolCallJSON(strings.TrimSpace(match[1])); len(parsed) > 0 {
+			fenced := strings.TrimSpace(match[1])
+			if parsed := parseToolCallJSON(fenced); len(parsed) > 0 {
+				toolCalls = append(toolCalls, parsed...)
+				cleanText = strings.TrimSpace(strings.Replace(cleanText, match[0], "", 1))
+				break
+			} else if parsed, _ := parseToolCallJSONSequence(fenced); len(parsed) > 0 {
 				toolCalls = append(toolCalls, parsed...)
 				cleanText = strings.TrimSpace(strings.Replace(cleanText, match[0], "", 1))
 				break
@@ -176,6 +184,16 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 		}
 	}
 
+	if len(toolCalls) == 0 {
+		trimmedText := strings.TrimSpace(text)
+		if idx := firstToolJSONIndex(trimmedText); idx != -1 {
+			if parsed, consumed := parseToolCallJSONSequence(trimmedText[idx:]); len(parsed) > 0 {
+				toolCalls = append(toolCalls, parsed...)
+				cleanText = strings.TrimSpace(trimmedText[:idx] + trimmedText[idx+consumed:])
+			}
+		}
+	}
+
 	cleanText = strings.TrimSpace(cleanText)
 	return cleanText, toolCalls
 }
@@ -199,6 +217,48 @@ func parseToolCallJSON(raw string) []models.ToolCall {
 		return nil
 	}
 	return parseToolCallValue(value)
+}
+
+func parseToolCallJSONSequence(raw string) ([]models.ToolCall, int) {
+	raw = stripMarkdownFence(raw)
+	if raw == "" {
+		return nil, 0
+	}
+
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	var calls []models.ToolCall
+	var consumed int64
+	for {
+		var value interface{}
+		if err := decoder.Decode(&value); err != nil {
+			break
+		}
+		parsed := parseToolCallValue(value)
+		if len(parsed) == 0 {
+			break
+		}
+		calls = append(calls, parsed...)
+		consumed = decoder.InputOffset()
+	}
+	return calls, int(consumed)
+}
+
+func firstToolJSONIndex(s string) int {
+	candidates := []string{
+		`{"name"`,
+		`{ "name"`,
+		`{"tool_call"`,
+		`{ "tool_call"`,
+		`{"tool_calls"`,
+		`{ "tool_calls"`,
+	}
+	best := -1
+	for _, candidate := range candidates {
+		if idx := strings.Index(s, candidate); idx != -1 && (best == -1 || idx < best) {
+			best = idx
+		}
+	}
+	return best
 }
 
 func parseToolCallValue(value interface{}) []models.ToolCall {

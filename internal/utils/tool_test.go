@@ -62,6 +62,23 @@ func TestParseToolCallsFencedOpenAIShape(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsConcatenatedJSONObjects(t *testing.T) {
+	text := `{"name": "read", "arguments": {"filePath": "/tmp/index.html"}} {"name": "read", "arguments": {"filePath": "/tmp/package.json"}}`
+	clean, calls := ParseToolCalls(text)
+	if clean != "" {
+		t.Fatalf("expected empty clean text, got %q", clean)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 tool calls, got %d", len(calls))
+	}
+	if calls[0].Function.Name != "read" || calls[1].Function.Name != "read" {
+		t.Fatalf("unexpected tool calls: %+v", calls)
+	}
+	if !strings.Contains(calls[1].Function.Arguments, "package.json") {
+		t.Fatalf("unexpected arguments: %s", calls[1].Function.Arguments)
+	}
+}
+
 func TestShouldEnableWebSearch(t *testing.T) {
 	if !ShouldEnableWebSearch("mimo-search", false, nil) {
 		t.Fatal("expected search in model name to enable web search")
