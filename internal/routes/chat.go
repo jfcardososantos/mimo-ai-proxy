@@ -661,6 +661,23 @@ func handleChatCompletions(c *gin.Context) {
 			return
 		}
 	}
+	if input.Stream && agentMode {
+		c.Header("Content-Type", "text/event-stream; charset=utf-8")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		if rc := http.NewResponseController(c.Writer); rc != nil {
+			_ = rc.SetWriteDeadline(time.Time{})
+		}
+		processAgentStreamBuffered(c, resp, payload, customHeaders, completionID, targetModel, historyID, query, statToken, input.ParallelToolCalls, toolChoice)
+		return
+	}
+
+	if agentMode {
+		processAgentNonStreamBuffered(c, resp, payload, customHeaders, completionID, targetModel, cacheKey, historyID, query, statToken, input.ParallelToolCalls, toolChoice)
+		return
+	}
+
 	defer resp.Body.Close()
 
 	var bodyReader io.Reader = resp.Body
@@ -908,6 +925,307 @@ func storePendingToolCalls(sessionID string, toolCalls []models.ToolCall) {
 		}
 		services.GlobalCache.Set("pending_tools_"+sessionID, toolCalls[1:], 10*time.Minute)
 	}
+}
+
+type parsedMimoChat struct {
+	FullText      string
+	CleanText     string
+	ReasoningText string
+	ToolCalls     []models.ToolCall
+	ResponseCalls []models.ToolCall
+	FinishReason  string
+	Usage         models.Usage
+	Query         string
+}
+
+func parseMimoHTTPResponse(resp *http.Response, completionID, model, query string, parallelToolCalls *bool, agentMode bool) (parsedMimoChat, error) {
+	defer resp.Body.Close()
+
+	var bodyReader io.Reader = resp.Body
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return parsedMimoChat{}, err
+		}
+		defer gz.Close()
+		bodyReader = gz
+	}
+
+	return parseMimoChatBody(bodyReader, completionID, model, query, parallelToolCalls, agentMode), nil
+}
+
+func parseMimoChatBody(body io.Reader, completionID, model, query string, parallelToolCalls *bool, agentMode bool) parsedMimoChat {
+	respBody, _ := io.ReadAll(body)
+	events := strings.Split(string(respBody), "\n\n")
+
+	var inThinking bool
+	var inToolCall bool
+	var sentToolCallName bool
+	var currentToolID string
+	var toolCallIndex int
+	var toolCallBuffer strings.Builder
+	var fullText strings.Builder
+	var reasoningText strings.Builder
+	var usage models.Usage
+
+	for _, event := range events {
+		if strings.TrimSpace(event) == "" {
+			continue
+		}
+
+		lines := strings.Split(event, "\n")
+		var eventType string
+		var dataStr string
+		for _, line := range lines {
+			if strings.HasPrefix(line, "event:") {
+				eventType = strings.TrimSpace(line[6:])
+			} else if strings.HasPrefix(line, "data:") {
+				dataStr = strings.TrimSpace(line[5:])
+			}
+		}
+		if dataStr != "" {
+			processEvent(nil, eventType, dataStr, completionID, model, false, &inThinking, &inToolCall, &sentToolCallName, &currentToolID, &toolCallIndex, &toolCallBuffer, &fullText, &reasoningText, &usage)
+		}
+	}
+
+	if inToolCall && toolCallBuffer.Len() > 0 {
+		fullText.WriteString(utils.ToolCallOpenTag)
+		fullText.WriteString(toolCallBuffer.String())
+		fullText.WriteString(utils.ToolCallCloseTag)
+	}
+
+	cleanText, toolCalls := utils.ParseToolCalls(fullText.String())
+	cleanText = strings.TrimSpace(cleanText)
+	toolCalls = finalizeToolCalls(toolCalls)
+	responseCalls := responseToolCalls(toolCalls, parallelToolCalls, agentMode)
+
+	finishReason := "stop"
+	if len(toolCalls) > 0 {
+		finishReason = "tool_calls"
+		cleanText = ""
+	}
+
+	if usage.TotalTokens == 0 {
+		usage.PromptTokens = len(query) / 4
+		usage.CompletionTokens = fullText.Len() / 4
+		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+	}
+
+	return parsedMimoChat{
+		FullText:      fullText.String(),
+		CleanText:     cleanText,
+		ReasoningText: strings.TrimSpace(reasoningText.String()),
+		ToolCalls:     toolCalls,
+		ResponseCalls: responseCalls,
+		FinishReason:  finishReason,
+		Usage:         usage,
+		Query:         query,
+	}
+}
+
+func processAgentStreamBuffered(c *gin.Context, firstResp *http.Response, payload models.MimoPayload, customHeaders map[string]string, completionID, model, userID, query, statToken string, parallelToolCalls *bool, toolChoice string) {
+	initialChunk := models.ChatCompletionChunk{
+		ID:      "chatcmpl-" + completionID,
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   model,
+		Choices: []models.Choice{
+			{
+				Index: 0,
+				Delta: models.Delta{Role: "assistant"},
+			},
+		},
+	}
+	initialBytes, _ := json.Marshal(initialChunk)
+	c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(initialBytes)))
+	c.Writer.Flush()
+
+	result, statToken := runAgentSemanticRetries(firstResp, payload, customHeaders, completionID, model, query, statToken, parallelToolCalls, toolChoice)
+	IncrementTokenStat(statToken, result.Usage.TotalTokens)
+	services.SaveMessage(userID, "asst_"+completionID, "assistant", assistantTranscript(result.FullText, result.ReasoningText))
+
+	if result.FinishReason == "tool_calls" {
+		for _, tc := range result.ResponseCalls {
+			utils.EmitStreamToolCall(c, completionID, model, tc)
+		}
+		storePendingToolCalls(userID, result.ToolCalls)
+		utils.FinalizeChatStream(c, completionID, model, "tool_calls", &result.Usage)
+		return
+	}
+
+	if strings.TrimSpace(result.CleanText) != "" {
+		chunk := utils.CreateChatCompletionChunk(completionID, result.CleanText, model, nil, "", nil, nil)
+		b, _ := json.Marshal(chunk)
+		c.Writer.WriteString(fmt.Sprintf("data: %s\n\n", string(b)))
+		c.Writer.Flush()
+	}
+	utils.FinalizeChatStream(c, completionID, model, "stop", &result.Usage)
+}
+
+func processAgentNonStreamBuffered(c *gin.Context, firstResp *http.Response, payload models.MimoPayload, customHeaders map[string]string, completionID, model, cacheKey, userID, query, statToken string, parallelToolCalls *bool, toolChoice string) {
+	result, statToken := runAgentSemanticRetries(firstResp, payload, customHeaders, completionID, model, query, statToken, parallelToolCalls, toolChoice)
+	IncrementTokenStat(statToken, result.Usage.TotalTokens)
+	services.SaveMessage(userID, "asst_"+completionID, "assistant", assistantTranscript(result.FullText, result.ReasoningText))
+	if result.FinishReason == "tool_calls" {
+		storePendingToolCalls(userID, result.ToolCalls)
+	}
+	responseResult := result
+	responseResult.ReasoningText = ""
+	writeNonStreamResponse(c, completionID, model, responseResult)
+	_ = cacheKey
+}
+
+func runAgentSemanticRetries(firstResp *http.Response, payload models.MimoPayload, customHeaders map[string]string, completionID, model, query, statToken string, parallelToolCalls *bool, toolChoice string) (parsedMimoChat, string) {
+	currentResp := firstResp
+	currentPayload := payload
+	currentQuery := query
+	last := parsedMimoChat{
+		FinishReason: "stop",
+		Query:        query,
+		Usage: models.Usage{
+			PromptTokens: len(query) / 4,
+			TotalTokens:  len(query) / 4,
+		},
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		parsed, err := parseMimoHTTPResponse(currentResp, completionID, model, currentQuery, parallelToolCalls, true)
+		if err != nil {
+			fmt.Printf("[%s] Failed to parse Xiaomi response: %v\n", completionID, err)
+			return last, statToken
+		}
+		last = parsed
+
+		if !shouldRetryAgentToolCall(parsed, toolChoice) || attempt == 1 {
+			return parsed, statToken
+		}
+
+		currentQuery = buildAgentToolRetryQuery(payload.Query, parsed)
+		currentPayload.Query = currentQuery
+		currentPayload.MsgID = utils.GenerateID()
+
+		auth, authErr := services.GetSelectedAuth()
+		if authErr != nil {
+			fmt.Printf("[%s] Agent semantic retry auth error: %v\n", completionID, authErr)
+			return parsed, statToken
+		}
+		statToken = auth.Token
+
+		resp, reqErr := sendMimoChatRequest(auth, currentPayload, customHeaders, completionID)
+		if reqErr != nil {
+			fmt.Printf("[%s] Agent semantic retry request error: %v\n", completionID, reqErr)
+			return parsed, statToken
+		}
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			fmt.Printf("[%s] Agent semantic retry non-200: %d - %s\n", completionID, resp.StatusCode, string(body))
+			return parsed, statToken
+		}
+		currentResp = resp
+	}
+
+	return last, statToken
+}
+
+func shouldRetryAgentToolCall(result parsedMimoChat, toolChoice string) bool {
+	if len(result.ToolCalls) > 0 {
+		return false
+	}
+	choice := strings.ToLower(strings.TrimSpace(toolChoice))
+	if choice == "none" {
+		return false
+	}
+	if choice == "required" || choice == "any" || (choice != "" && choice != "auto") {
+		return true
+	}
+
+	clean := strings.ToLower(strings.TrimSpace(result.CleanText))
+	reasoning := strings.TrimSpace(result.ReasoningText)
+	if clean == "" && reasoning != "" {
+		return true
+	}
+
+	actionOnlyMarkers := []string{
+		"let me start",
+		"i'll start",
+		"i will start",
+		"i need to inspect",
+		"i need to read",
+		"vou começar",
+		"vou iniciar",
+		"vou construir",
+		"vou implementar",
+		"vou criar",
+		"vou modificar",
+		"vou ajustar",
+		"vou corrigir",
+		"vou verificar",
+		"vou ler",
+		"vou abrir",
+		"vou editar",
+		"vamos começar",
+		"preciso verificar",
+		"preciso ler",
+		"começar constru",
+	}
+	for _, marker := range actionOnlyMarkers {
+		if strings.Contains(clean, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildAgentToolRetryQuery(originalQuery string, result parsedMimoChat) string {
+	var sb strings.Builder
+	sb.WriteString(originalQuery)
+	sb.WriteString("\n\n# Adapter correction\n")
+	sb.WriteString("Your previous response contained reasoning/planning but no tool call, so the IDE client could not do any work.\n")
+	sb.WriteString("Now respond with exactly one <tool_call>{\"name\":\"...\",\"arguments\":{...}}</tool_call> block using one available tool. Do not write prose, do not say you will start, and do not use Markdown fences.\n")
+	if strings.TrimSpace(result.CleanText) != "" {
+		sb.WriteString("Previous non-action response: ")
+		sb.WriteString(strings.TrimSpace(result.CleanText))
+		sb.WriteByte('\n')
+	}
+	return sb.String()
+}
+
+func writeNonStreamResponse(c *gin.Context, completionID, model string, result parsedMimoChat) {
+	type nonStreamChoice struct {
+		Index        int          `json:"index"`
+		Message      models.Delta `json:"message"`
+		FinishReason *string      `json:"finish_reason"`
+	}
+	type nonStreamResponse struct {
+		ID      string            `json:"id"`
+		Object  string            `json:"object"`
+		Created int64             `json:"created"`
+		Model   string            `json:"model"`
+		Choices []nonStreamChoice `json:"choices"`
+		Usage   *models.Usage     `json:"usage"`
+	}
+
+	response := nonStreamResponse{
+		ID:      "chatcmpl-" + completionID,
+		Object:  "chat.completion",
+		Created: time.Now().Unix(),
+		Model:   model,
+		Choices: []nonStreamChoice{
+			{
+				Index: 0,
+				Message: models.Delta{
+					Role:             "assistant",
+					Content:          result.CleanText,
+					ReasoningContent: result.ReasoningText,
+					ToolCalls:        result.ResponseCalls,
+				},
+				FinishReason: &result.FinishReason,
+			},
+		},
+		Usage: &result.Usage,
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func processNonStream(c *gin.Context, body io.Reader, completionID, model string, cacheKey string, userID string, query string, statToken string, parallelToolCalls *bool, allowResponseCache bool, agentMode bool) {
