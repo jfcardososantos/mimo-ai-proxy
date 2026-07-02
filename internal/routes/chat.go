@@ -406,6 +406,7 @@ func handleChatCompletions(c *gin.Context) {
 		ToolChoice        interface{}      `json:"tool_choice"`
 		ParallelToolCalls *bool            `json:"parallel_tool_calls"`
 		WebSearch         bool             `json:"web_search"`
+		WebSearchOptions  interface{}      `json:"web_search_options"`
 	}
 
 	if err = json.Unmarshal(bodyCopy, &input); err != nil {
@@ -604,7 +605,7 @@ func handleChatCompletions(c *gin.Context) {
 		}
 	}
 	webSearchStatus := "disabled"
-	if utils.ShouldEnableWebSearch(targetModel, input.WebSearch, input.Tools) ||
+	if utils.ShouldEnableWebSearch(targetModel, input.WebSearch || input.WebSearchOptions != nil, input.Tools) ||
 		os.Getenv("DEFAULT_WEB_SEARCH") == "true" || os.Getenv("DEFAULT_WEB_SEARCH") == "1" {
 		webSearchStatus = "enabled"
 	}
@@ -1108,7 +1109,7 @@ func runAgentSemanticRetries(firstResp *http.Response, payload models.MimoPayloa
 			return parsed, statToken
 		}
 		if attempt == maxAgentSemanticAttempts-1 {
-			if synthesized := synthesizePathReadToolCalls(parsed, tools, parallelToolCalls); len(synthesized.ToolCalls) > 0 {
+			if synthesized := synthesizeFallbackToolCalls(parsed, tools, parallelToolCalls); len(synthesized.ToolCalls) > 0 {
 				return synthesized, statToken
 			}
 			return parsed, statToken
@@ -1142,6 +1143,16 @@ func runAgentSemanticRetries(firstResp *http.Response, payload models.MimoPayloa
 	return last, statToken
 }
 
+func synthesizeFallbackToolCalls(result parsedMimoChat, tools []models.Tool, parallelToolCalls *bool) parsedMimoChat {
+	if synthesized := synthesizePathReadToolCalls(result, tools, parallelToolCalls); len(synthesized.ToolCalls) > 0 {
+		return synthesized
+	}
+	if synthesized := synthesizeSearchToolCall(result, tools, parallelToolCalls); len(synthesized.ToolCalls) > 0 {
+		return synthesized
+	}
+	return parsedMimoChat{}
+}
+
 func synthesizePathReadToolCalls(result parsedMimoChat, tools []models.Tool, parallelToolCalls *bool) parsedMimoChat {
 	paths := extractPathOnlyResponse(result.CleanText)
 	if len(paths) == 0 {
@@ -1169,6 +1180,37 @@ func synthesizePathReadToolCalls(result parsedMimoChat, tools []models.Tool, par
 		})
 	}
 	calls = finalizeToolCalls(calls)
+
+	result.CleanText = ""
+	result.ToolCalls = calls
+	result.ResponseCalls = responseToolCalls(calls, parallelToolCalls, true)
+	result.FinishReason = "tool_calls"
+	return result
+}
+
+func synthesizeSearchToolCall(result parsedMimoChat, tools []models.Tool, parallelToolCalls *bool) parsedMimoChat {
+	toolName, argName := selectSearchTool(tools)
+	if toolName == "" {
+		return parsedMimoChat{}
+	}
+
+	query := extractSearchIntentQuery(result.CleanText)
+	if query == "" {
+		query = extractSearchIntentQuery(result.ReasoningText)
+	}
+	if query == "" {
+		return parsedMimoChat{}
+	}
+
+	args, _ := json.Marshal(map[string]string{argName: query})
+	calls := finalizeToolCalls([]models.ToolCall{{
+		ID:   "call_" + utils.GenerateID(),
+		Type: "function",
+		Function: models.ToolFunction{
+			Name:      toolName,
+			Arguments: string(args),
+		},
+	}})
 
 	result.CleanText = ""
 	result.ToolCalls = calls
@@ -1278,6 +1320,83 @@ func selectPathArgumentName(tool models.Tool) string {
 	return "filePath"
 }
 
+func selectSearchTool(tools []models.Tool) (string, string) {
+	preferredNames := []string{"web_search", "webSearch", "search", "search_web", "brave_search", "google_search"}
+	for _, preferred := range preferredNames {
+		for _, tool := range tools {
+			if tool.Type == "function" && tool.Function.Name == preferred {
+				return tool.Function.Name, selectSearchArgumentName(tool)
+			}
+		}
+	}
+
+	for _, tool := range tools {
+		if tool.Type != "function" {
+			continue
+		}
+		name := strings.ToLower(tool.Function.Name)
+		description := strings.ToLower(tool.Function.Description)
+		if strings.Contains(name, "search") || strings.Contains(description, "search") || strings.Contains(description, "web") {
+			return tool.Function.Name, selectSearchArgumentName(tool)
+		}
+	}
+	return "", ""
+}
+
+func selectSearchArgumentName(tool models.Tool) string {
+	var schema map[string]interface{}
+	b, err := json.Marshal(tool.Function.Parameters)
+	if err == nil {
+		_ = json.Unmarshal(b, &schema)
+	}
+
+	if props, ok := schema["properties"].(map[string]interface{}); ok {
+		for _, candidate := range []string{"query", "q", "search_query", "searchTerm", "search_term", "keywords"} {
+			if _, ok := props[candidate]; ok {
+				return candidate
+			}
+		}
+	}
+	return "query"
+}
+
+func extractSearchIntentQuery(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+
+	lowered := strings.ToLower(text)
+	markers := []string{
+		"search web for",
+		"web search for",
+		"search for",
+		"look up",
+		"pesquisar por",
+		"buscar por",
+		"busca por",
+		"procurar por",
+		"vou pesquisar",
+		"vou buscar",
+		"preciso pesquisar",
+		"preciso buscar",
+	}
+	for _, marker := range markers {
+		if idx := strings.Index(lowered, marker); idx != -1 {
+			query := strings.TrimSpace(text[idx+len(marker):])
+			query = strings.Trim(query, " \t\n\r:;,.`'\"")
+			if query != "" && len(query) <= 240 {
+				return query
+			}
+		}
+	}
+
+	if (strings.Contains(lowered, "search") || strings.Contains(lowered, "pesquisar") || strings.Contains(lowered, "buscar")) && len(text) <= 180 {
+		return strings.Trim(text, " \t\n\r:;,.`'\"")
+	}
+	return ""
+}
+
 func shouldRetryAgentToolCall(result parsedMimoChat, toolChoice string) bool {
 	if len(result.ToolCalls) > 0 {
 		return false
@@ -1307,6 +1426,10 @@ func shouldRetryAgentToolCall(result parsedMimoChat, toolChoice string) bool {
 		"i will start",
 		"i need to inspect",
 		"i need to read",
+		"i need to search",
+		"i should search",
+		"search for",
+		"look up",
 		"vou começar",
 		"vou iniciar",
 		"vou construir",
@@ -1319,9 +1442,13 @@ func shouldRetryAgentToolCall(result parsedMimoChat, toolChoice string) bool {
 		"vou ler",
 		"vou abrir",
 		"vou editar",
+		"vou pesquisar",
+		"vou buscar",
 		"vamos começar",
 		"preciso verificar",
 		"preciso ler",
+		"preciso pesquisar",
+		"preciso buscar",
 		"começar constru",
 	}
 	for _, marker := range actionOnlyMarkers {

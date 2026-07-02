@@ -3,6 +3,8 @@ package utils
 import (
 	"strings"
 	"testing"
+
+	"mimoproxy/internal/models"
 )
 
 func TestParseToolCallsXML(t *testing.T) {
@@ -79,11 +81,45 @@ func TestParseToolCallsConcatenatedJSONObjects(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsCommonAgentShapes(t *testing.T) {
+	text := `{"tool":"web_search","input":{"query":"OpenAI latest model"}}`
+	clean, calls := ParseToolCalls(text)
+	if clean != "" {
+		t.Fatalf("expected empty clean text, got %q", clean)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(calls))
+	}
+	if calls[0].Function.Name != "web_search" {
+		t.Fatalf("unexpected name: %s", calls[0].Function.Name)
+	}
+	if !strings.Contains(calls[0].Function.Arguments, "OpenAI latest model") {
+		t.Fatalf("unexpected arguments: %s", calls[0].Function.Arguments)
+	}
+}
+
+func TestParseToolCallsFunctionNameParametersShape(t *testing.T) {
+	text := `{"function_name":"search","parameters":{"q":"golang release notes"}}`
+	_, calls := ParseToolCalls(text)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(calls))
+	}
+	if calls[0].Function.Name != "search" {
+		t.Fatalf("unexpected name: %s", calls[0].Function.Name)
+	}
+	if !strings.Contains(calls[0].Function.Arguments, "golang release notes") {
+		t.Fatalf("unexpected arguments: %s", calls[0].Function.Arguments)
+	}
+}
+
 func TestShouldEnableWebSearch(t *testing.T) {
 	if !ShouldEnableWebSearch("mimo-search", false, nil) {
 		t.Fatal("expected search in model name to enable web search")
 	}
 	if !ShouldEnableWebSearch("mimo", true, nil) {
 		t.Fatal("expected explicit web_search flag")
+	}
+	if !ShouldEnableWebSearch("mimo", false, []models.Tool{{Type: "web_search_preview"}}) {
+		t.Fatal("expected native web search tool to enable web search")
 	}
 }

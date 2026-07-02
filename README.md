@@ -232,6 +232,7 @@ Recomendações:
 - mantenha o `model` explícito
 - envie `stream: true` apenas quando quiser resposta em streaming
 - use `parallel_tool_calls: false` se o cliente tiver dificuldade com múltiplas tools por turno
+- para Hermes Agent, mantenha `AGENT_FAST_MODE` ligado e evite limites baixos de contexto; os defaults preservam mais histórico e resultados de busca
 
 ## Persistência
 

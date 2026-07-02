@@ -782,6 +782,13 @@ O proxy suporta upload de imagens para a Xiaomi. O processo é:
 | `AUTH_STORE_PATH` | ❌ | `data/auth.json` | Caminho do arquivo de sessão |
 | `DEFAULT_WEB_SEARCH` | ❌ | — | Se `true`, ativa web search em todas as chamadas |
 | `AGENT_ENABLE_THINKING` | ❌ | — | Se `true`, mantém thinking ativo mesmo com tools |
+| `AGENT_FAST_MODE` | ❌ | `true` | Usa instruções compactas de tools para reduzir latência em IDEs/agentes |
+| `AGENT_MAX_MESSAGES` | ❌ | `48` | Quantidade de mensagens recentes preservadas no modo agente, além de system prompts |
+| `AGENT_MAX_CONTEXT_CHARS` | ❌ | `400000` | Limite de caracteres enviados ao MiMo no modo agente |
+| `AGENT_MAX_TOOL_RESULT_CHARS` | ❌ | `32000` | Limite por resultado de ferramenta no modo agente; preserva começo e fim quando precisa truncar |
+| `AGENT_SEQUENTIAL_TOOLS` | ❌ | `false` | Se `true`, entrega uma tool por vez para clientes com dificuldade em chamadas paralelas |
+
+Compatibilidade: chamadas com `web_search: true`, `web_search_options`, `model` contendo `search`, ou tools nativas como `{"type":"web_search_preview"}` ativam a busca nativa do MiMo.
 
 ---
 
