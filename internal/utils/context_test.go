@@ -1,10 +1,8 @@
 package utils
 
 import (
-	"strings"
-	"testing"
-
 	"mimoproxy/internal/models"
+	"testing"
 )
 
 func TestTrimMessagesForProxyKeepsSystemAndTail(t *testing.T) {
@@ -20,24 +18,5 @@ func TestTrimMessagesForProxyKeepsSystemAndTail(t *testing.T) {
 	}
 	if out[0].Role != "system" {
 		t.Fatalf("expected system first, got %s", out[0].Role)
-	}
-}
-
-func TestTrimMessagesForProxyPreservesLongToolResultTail(t *testing.T) {
-	longResult := strings.Repeat("a", 5000) + "IMPORTANT_TAIL_RESULT"
-	msgs := []models.Message{
-		{Role: "tool", Content: longResult},
-	}
-
-	out := TrimMessagesForProxy(msgs, ContextLimits{MaxMessages: 10, MaxChars: 1000, MaxToolResultChars: 3000})
-	content, ok := out[0].Content.(string)
-	if !ok {
-		t.Fatalf("expected string content")
-	}
-	if !strings.Contains(content, "IMPORTANT_TAIL_RESULT") {
-		t.Fatalf("expected truncated content to preserve the tail, got %q", content[len(content)-80:])
-	}
-	if !strings.Contains(content, "proxy omitted") {
-		t.Fatalf("expected truncation marker, got %q", content)
 	}
 }

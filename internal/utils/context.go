@@ -23,13 +23,13 @@ func ContextLimitsFromEnv(agentMode bool) ContextLimits {
 		MaxToolResultChars: envInt("MAX_TOOL_RESULT_CHARS", 32000),
 	}
 	if agentMode {
-		if v := envInt("AGENT_MAX_MESSAGES", 48); v > 0 {
+		if v := envInt("AGENT_MAX_MESSAGES", 20); v > 0 {
 			limits.MaxMessages = v
 		}
-		if v := envInt("AGENT_MAX_CONTEXT_CHARS", 400000); v > 0 {
+		if v := envInt("AGENT_MAX_CONTEXT_CHARS", 100000); v > 0 {
 			limits.MaxChars = v
 		}
-		if v := envInt("AGENT_MAX_TOOL_RESULT_CHARS", 32000); v > 0 {
+		if v := envInt("AGENT_MAX_TOOL_RESULT_CHARS", 6000); v > 0 {
 			limits.MaxToolResultChars = v
 		}
 	}
@@ -79,18 +79,18 @@ func truncateMessageContent(m models.Message, maxChars int) models.Message {
 	}
 	switch v := m.Content.(type) {
 	case string:
-		m.Content = truncateStringForContext(v, maxChars)
+		m.Content = truncateString(v, maxChars)
 	case []interface{}:
 		parts := make([]interface{}, 0, len(v))
 		for _, item := range v {
 			if s, ok := item.(string); ok {
-				parts = append(parts, truncateStringForContext(s, maxChars))
+				parts = append(parts, truncateString(s, maxChars))
 				continue
 			}
 			if block, ok := item.(map[string]interface{}); ok {
 				if block["type"] == "text" {
 					if t, ok := block["text"].(string); ok {
-						block["text"] = truncateStringForContext(t, maxChars)
+						block["text"] = truncateString(t, maxChars)
 					}
 				}
 				parts = append(parts, block)
@@ -103,19 +103,11 @@ func truncateMessageContent(m models.Message, maxChars int) models.Message {
 	return m
 }
 
-func truncateStringForContext(s string, maxChars int) string {
+func truncateString(s string, maxChars int) string {
 	if maxChars <= 0 || len(s) <= maxChars {
 		return s
 	}
-	if maxChars < 2000 {
-		return s[:maxChars] + "\n...[truncated by proxy]"
-	}
-	headChars := (maxChars * 2) / 3
-	tailChars := maxChars - headChars
-	omitted := len(s) - headChars - tailChars
-	return s[:headChars] +
-		"\n...[proxy omitted " + strconv.Itoa(omitted) + " chars from the middle; start and end preserved]...\n" +
-		s[len(s)-tailChars:]
+	return s[:maxChars] + "\n...[truncated for proxy speed]"
 }
 
 // FormatToolsAsInstructionsCompact is a shorter tools block for agent/IDE latency.
@@ -126,7 +118,6 @@ func FormatToolsAsInstructionsCompact(tools []models.Tool, toolChoice string) st
 	var sb strings.Builder
 	sb.WriteString("\n# Tools — call with <tool_call>{\"name\":\"fn\",\"arguments\":{...}}</tool_call>\n")
 	sb.WriteString("Use only valid JSON inside <tool_call>. Do not wrap tool calls in Markdown fences.\n")
-	sb.WriteString("When external/current facts, repo inspection, file edits, commands, or web research are needed, call the matching tool immediately instead of describing a plan.\n")
 	for _, tool := range tools {
 		if tool.Type != "function" {
 			continue
@@ -155,7 +146,7 @@ func FormatToolsAsInstructionsCompact(tools []models.Tool, toolChoice string) st
 			sb.WriteByte('\n')
 		}
 	}
-	sb.WriteString("After any tool result, decide whether more evidence/action is needed; if yes call another tool, otherwise provide the final answer. Do not stop with only a plan or partial search summary.\n")
+	sb.WriteString("After planning, emit tool_call XML immediately. Do not stop with only a plan.\n")
 	if toolChoice == "none" {
 		sb.WriteString("tool_choice: do not call tools this turn.\n")
 		return sb.String()

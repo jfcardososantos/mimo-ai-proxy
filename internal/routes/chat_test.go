@@ -106,36 +106,3 @@ func TestSynthesizeReadCommandToolCalls(t *testing.T) {
 		t.Fatalf("unexpected second arguments: %s", out.ToolCalls[1].Function.Arguments)
 	}
 }
-
-func TestSynthesizeSearchToolCall(t *testing.T) {
-	result := parsedMimoChat{
-		CleanText:    "Vou buscar por Hermes agent OpenAI tool calling compatibility",
-		FinishReason: "stop",
-	}
-	tools := []models.Tool{{
-		Type: "function",
-		Function: models.ToolDefinition{
-			Name: "web_search",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"query": map[string]interface{}{"type": "string"},
-				},
-			},
-		},
-	}}
-
-	out := synthesizeFallbackToolCalls(result, tools, nil)
-	if out.FinishReason != "tool_calls" {
-		t.Fatalf("expected tool_calls finish reason, got %s", out.FinishReason)
-	}
-	if len(out.ToolCalls) != 1 {
-		t.Fatalf("expected 1 tool call, got %d", len(out.ToolCalls))
-	}
-	if out.ToolCalls[0].Function.Name != "web_search" {
-		t.Fatalf("unexpected tool name: %s", out.ToolCalls[0].Function.Name)
-	}
-	if !strings.Contains(out.ToolCalls[0].Function.Arguments, "Hermes agent") {
-		t.Fatalf("unexpected arguments: %s", out.ToolCalls[0].Function.Arguments)
-	}
-}

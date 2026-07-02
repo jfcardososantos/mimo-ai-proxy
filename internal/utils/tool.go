@@ -29,7 +29,6 @@ func FormatToolsAsInstructions(tools []models.Tool) string {
 	var sb strings.Builder
 	sb.WriteString("\n\n# Tools\n\nYou have access to the following tools. To call a tool, you MUST use exactly this XML format and no Markdown fence:\n")
 	sb.WriteString("<tool_call>{\"name\":\"function_name\",\"arguments\":{\"arg1\":\"value1\"}}</tool_call>\n\n")
-	sb.WriteString("This adapter will convert that XML into OpenAI-compatible tool_calls for the client.\n")
 	sb.WriteString("Available tools:\n")
 
 	for _, tool := range tools {
@@ -83,8 +82,6 @@ func agentToolExecutionRules() string {
 - Each turn that requires action must include at least one <tool_call>...</tool_call> block.
 - Plain text without tool_call XML is only valid when the task is fully complete and no tools are needed.
 - Tool results from the client appear as <tool_result ...>. Use them as observations and continue with the next required tool call or final answer.
-- For web/search tasks, use the available search/browser tools for current or source-dependent facts. If search results are thin, incomplete, or ambiguous, refine the query or open relevant results before finalizing.
-- Do not summarize partial evidence as a final answer when another tool call is needed to complete the task.
 `
 }
 
@@ -93,12 +90,6 @@ func agentToolExecutionRules() string {
 func ShouldEnableWebSearch(model string, webSearchFlag bool, tools []models.Tool) bool {
 	if webSearchFlag || strings.Contains(strings.ToLower(model), "search") {
 		return true
-	}
-	for _, tool := range tools {
-		toolType := strings.ToLower(strings.TrimSpace(tool.Type))
-		if toolType != "function" && strings.Contains(toolType, "search") {
-			return true
-		}
 	}
 	if len(tools) > 0 {
 		return false
@@ -311,26 +302,6 @@ func parseSingleToolCall(data map[string]interface{}) []models.ToolCall {
 		}
 		if a, ok := fn["arguments"]; ok {
 			args = a
-		}
-	} else if fnName, ok := data["function"].(string); ok && name == "" {
-		name = fnName
-	}
-
-	for _, key := range []string{"tool", "tool_name", "function_name", "action"} {
-		if name != "" {
-			break
-		}
-		if n, ok := data[key].(string); ok {
-			name = n
-		}
-	}
-
-	if args == nil {
-		for _, key := range []string{"input", "parameters", "params", "args"} {
-			if a, ok := data[key]; ok {
-				args = a
-				break
-			}
 		}
 	}
 
