@@ -9,6 +9,7 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"regexp"
 	"strings"
 
@@ -129,6 +130,9 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 		if parsed := parseToolCallJSON(jsonStr); len(parsed) > 0 {
 			toolCalls = append(toolCalls, parsed...)
 			cleanText = strings.Replace(cleanText, match[0], "", 1)
+		} else if parsed := parseHermesToolCallXML(jsonStr); len(parsed) > 0 {
+			toolCalls = append(toolCalls, parsed...)
+			cleanText = strings.Replace(cleanText, match[0], "", 1)
 		}
 	}
 
@@ -197,6 +201,61 @@ func ParseToolCalls(text string) (string, []models.ToolCall) {
 
 	cleanText = strings.TrimSpace(cleanText)
 	return cleanText, toolCalls
+}
+
+func parseHermesToolCallXML(raw string) []models.ToolCall {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	functionRegex := regexp.MustCompile(`(?s)<function\s*=\s*"?([A-Za-z0-9_.:-]+)"?\s*>(.*?)</function>`)
+	parameterRegex := regexp.MustCompile(`(?s)<parameter\s*=\s*"?([A-Za-z0-9_.:-]+)"?\s*>(.*?)</parameter>`)
+
+	matches := functionRegex.FindAllStringSubmatch(raw, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	calls := make([]models.ToolCall, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 3 {
+			continue
+		}
+
+		name := strings.TrimSpace(match[1])
+		if name == "" {
+			continue
+		}
+
+		args := map[string]string{}
+		for _, param := range parameterRegex.FindAllStringSubmatch(match[2], -1) {
+			if len(param) < 3 {
+				continue
+			}
+			key := strings.TrimSpace(param[1])
+			if key == "" {
+				continue
+			}
+			args[key] = strings.TrimSpace(html.UnescapeString(param[2]))
+		}
+
+		argsBytes, err := json.Marshal(args)
+		if err != nil {
+			continue
+		}
+
+		calls = append(calls, models.ToolCall{
+			ID:   "call_" + GenerateID(),
+			Type: "function",
+			Function: models.ToolFunction{
+				Name:      name,
+				Arguments: string(argsBytes),
+			},
+		})
+	}
+
+	return calls
 }
 
 func stripMarkdownFence(s string) string {

@@ -23,6 +23,28 @@ func TestParseToolCallsXML(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsHermesFunctionXML(t *testing.T) {
+	text := `Vou acessar o site.
+<tool_call>
+<function=browser_navigate>
+<parameter=url>https://iprof.com.br</parameter>
+</function>
+</tool_call>`
+	clean, calls := ParseToolCalls(text)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(calls))
+	}
+	if calls[0].Function.Name != "browser_navigate" {
+		t.Fatalf("unexpected name: %s", calls[0].Function.Name)
+	}
+	if !strings.Contains(calls[0].Function.Arguments, "https://iprof.com.br") {
+		t.Fatalf("unexpected arguments: %s", calls[0].Function.Arguments)
+	}
+	if strings.Contains(clean, "tool_call") || strings.Contains(clean, "browser_navigate") {
+		t.Fatalf("expected clean text without Hermes tool markup, got %q", clean)
+	}
+}
+
 func TestParseToolCallsTrailingJSON(t *testing.T) {
 	text := "Resposta aqui.\n```json\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"/tmp/a\"}}\n```"
 	_, calls := ParseToolCalls(text)
