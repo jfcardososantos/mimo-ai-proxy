@@ -1,8 +1,8 @@
-# flip-mimo-api
+# flip-ai
 
-`flip-mimo-api` expõe os modelos da Xiaomi Mimo por uma API simples e compatível com OpenAI e Ollama.
+`flip-ai` expõe os modelos da Xiaomi Mimo e provedores gratuitos/oficiais por uma API simples e compatível com OpenAI e Ollama.
 
-O fluxo principal é:
+O fluxo principal para a Xiaomi Mimo é:
 
 1. fazer login no Xiaomi AI Studio;
 2. importar a sessão com a extensão do Chrome/Edge;
@@ -13,16 +13,17 @@ Os endpoints públicos não exigem token do cliente. A autenticação com a Xiao
 ## O que o projeto entrega
 
 - Compatibilidade com OpenAI em `POST /v1/chat/completions`, `POST /v1/completions` e `GET /v1/models`
+- Providers oficiais por prefixo de modelo: Gemini, Groq, OpenRouter e Cloudflare Workers AI
 - Compatibilidade com Ollama em `POST /api/chat`, `POST /api/generate`, `GET /api/tags` e `GET /api/version`
 - Streaming
 - Tool calling
 - Persistência de histórico em SQLite
 - Dashboard local para operação e teste
-- Extensão para importar a sessão autenticada da Xiaomi
+- Extensão para importar sessões autenticadas suportadas
 
 ## Como funciona a autenticação
 
-`flip-mimo-api` não depende mais de `SERVICE_TOKEN`, `USER_ID`, `XIAOMI_CHATBOT_PH` ou `XIAOMI_COOKIE` no ambiente para operar.
+`flip-ai` não depende mais de `SERVICE_TOKEN`, `USER_ID`, `XIAOMI_CHATBOT_PH` ou `XIAOMI_COOKIE` no ambiente para operar.
 
 A sessão ativa é lida de:
 
@@ -51,13 +52,44 @@ PORT=3000
 CORS_ORIGIN=*
 API_KEY=
 AUTH_STORE_PATH=
+GEMINI_API_KEY=
+GROQ_API_KEY=
+OPENROUTER_API_KEY=
+CLOUDFLARE_API_KEY=
+CLOUDFLARE_ACCOUNT_ID=
 ```
 
 Notas:
 
 - `API_KEY` é opcional.
-- Se definida, ela protege apenas rotas administrativas de sessão, como `POST /auth/import`, `POST /auth/extension/import`, `POST /auth/clear` e `GET /auth/debug`.
+- Se definida, ela protege apenas rotas administrativas de sessão/chaves, como `POST /auth/import`, `POST /auth/extension/import`, `POST /auth/provider/import`, `POST /auth/clear` e `GET /auth/debug`.
 - `AUTH_STORE_PATH` é opcional. Se não for definido, a sessão fica em `data/auth.json`.
+- As chaves Gemini/Groq/OpenRouter/Cloudflare são opcionais. Se não forem definidas, o Mimo continua funcionando normalmente e os modelos daquele provider retornam erro de configuração.
+- Essas chaves podem vir do ambiente ou ser salvas em `data/auth.json` pela extensão em `POST /auth/provider/import`.
+
+## Providers oficiais
+
+Além dos modelos `mimo-*`, o endpoint `POST /v1/chat/completions` roteia automaticamente por prefixo:
+
+| Modelo no proxy | Provider | Variáveis necessárias |
+|-----------------|----------|-----------------------|
+| `gemini-3.5-flash` | Google Gemini API | `GEMINI_API_KEY` |
+| `groq/llama-3.1-8b-instant` | Groq | `GROQ_API_KEY` |
+| `openrouter/meta-llama/llama-3.1-8b-instruct:free` | OpenRouter | `OPENROUTER_API_KEY` |
+| `cf/@cf/meta/llama-3.1-8b-instruct` | Cloudflare Workers AI | `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` |
+
+Exemplo:
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-3.5-flash",
+    "messages": [
+      {"role": "user", "content": "Responda em uma frase."}
+    ]
+  }'
+```
 
 ## Executando
 
@@ -90,7 +122,7 @@ Entre em:
 
 Pela dashboard, baixe:
 
-- `/downloads/mimo-xiaomi-session-extension.zip`
+- `/downloads/flip-ai-session-extension.zip`
 
 Ou use a pasta local `extension/`.
 
@@ -110,6 +142,16 @@ No popup da extensão:
 3. clique em `Import Xiaomi Session`
 
 Se der certo, a sessão será salva em `data/auth.json`.
+
+### Providers com API key
+
+No popup da extensão também há botões para Gemini, Groq, OpenRouter e Cloudflare:
+
+1. clique em `Open <Provider>` para abrir a tela de criação de chave
+2. cole a API key no campo correspondente
+3. clique em `Save <Provider>`
+
+Para Cloudflare, informe também o `CLOUDFLARE_ACCOUNT_ID`. Para OpenRouter, `HTTP Referer` e `App title` são opcionais.
 
 ## Dashboard
 

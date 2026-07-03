@@ -1,6 +1,6 @@
-# flip-mimo-api Session Importer
+# flip-ai Session Importer
 
-Extensão Chrome/Edge para capturar a sessão autenticada da Xiaomi AI Studio e enviar ao `flip-mimo-api`.
+Extensão Chrome/Edge para capturar sessões autenticadas suportadas e enviar ao `flip-ai`.
 
 ## Instalação
 
@@ -12,10 +12,10 @@ Extensão Chrome/Edge para capturar a sessão autenticada da Xiaomi AI Studio e 
 
 ## Uso
 
-1. faça login em `https://aistudio.xiaomimimo.com/` no mesmo navegador
-2. abra o popup da extensão
-3. informe a URL pública do seu `flip-mimo-api`
-4. se você protegeu `POST /auth/extension/import`, informe a `API_KEY`
-5. clique em `Import Xiaomi Session`
+1. abra o popup da extensão
+2. informe a URL pública do seu `flip-ai`
+3. se você protegeu rotas administrativas, informe a `API_KEY`
+4. para Xiaomi ou DeepSeek, faça login no provedor no mesmo navegador e clique em `Import Xiaomi Session` ou `Import DeepSeek`
+5. para Gemini, Groq, OpenRouter ou Cloudflare, abra o painel do provider, gere uma API key e salve no campo correspondente
 
-Se funcionar, a sessão será salva em `data/auth.json` e o backend passará a autenticar internamente as chamadas para a Xiaomi.
+Se funcionar, a sessão ou chave será salva em `data/auth.json` e o backend passará a autenticar internamente as chamadas para o provedor.

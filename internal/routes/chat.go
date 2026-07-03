@@ -1,6 +1,6 @@
 /*
  * File: chat.go
- * Project: mimoproxy
+ * Project: flip-ai
  * Created: 2026-04-29
  */
 
@@ -13,9 +13,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"mimoproxy/internal/models"
-	"mimoproxy/internal/services"
-	"mimoproxy/internal/utils"
+	"flip-ai/internal/models"
+	"flip-ai/internal/services"
+	"flip-ai/internal/utils"
 	"net/http"
 	"net/url"
 	"os"
@@ -184,6 +184,7 @@ func handleModels(c *gin.Context) {
 }
 
 func appendDeepSeekModels(modelsList []map[string]interface{}) []map[string]interface{} {
+	modelsList = append(modelsList, services.OfficialProviderModels()...)
 	return append(modelsList,
 		map[string]interface{}{
 			"id":          "deepseek-chat",
@@ -480,6 +481,10 @@ func handleChatCompletions(c *gin.Context) {
 	}
 	if services.IsDeepSeekModel(targetModel) {
 		handleDeepSeekChatCompletions(c, input, completionID, cacheKey, targetModel)
+		return
+	}
+	if provider, ok := services.SelectOfficialProvider(targetModel); ok {
+		handleOfficialProviderChatCompletions(c, input, bodyCopy, completionID, targetModel, provider)
 		return
 	}
 
@@ -864,6 +869,77 @@ func handleDeepSeekChatCompletions(c *gin.Context, input openAIChatInput, comple
 	response := buildDeepSeekNonStreamResponse(completionID, targetModel, result)
 	services.GlobalCache.Set(cacheKey, response, 5*time.Minute)
 	c.JSON(http.StatusOK, response)
+}
+
+func handleOfficialProviderChatCompletions(c *gin.Context, input openAIChatInput, bodyCopy []byte, completionID string, targetModel string, provider services.OfficialProvider) {
+	if !provider.Configured {
+		utils.SendError(c, http.StatusServiceUnavailable, officialProviderConfigMessage(provider), "server_error", nil)
+		return
+	}
+
+	resp, err := services.ForwardOfficialChat(provider, bodyCopy)
+	if err != nil {
+		utils.SendError(c, http.StatusBadGateway, "Failed to call "+provider.Name+": "+err.Error(), "server_error", nil)
+		return
+	}
+	if resp == nil {
+		utils.SendError(c, http.StatusBadGateway, provider.Name+" returned no response", "server_error", nil)
+		return
+	}
+	defer resp.Body.Close()
+
+	if input.Stream {
+		c.Header("Content-Type", "text/event-stream; charset=utf-8")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(resp.StatusCode)
+		_, _ = io.Copy(c.Writer, resp.Body)
+		c.Writer.Flush()
+		return
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		utils.SendError(c, http.StatusBadGateway, "Failed to read "+provider.Name+" response: "+err.Error(), "server_error", nil)
+		return
+	}
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	c.Data(resp.StatusCode, contentType, rewriteProviderModelInResponse(body, provider.Model, targetModel))
+	_ = completionID
+}
+
+func officialProviderConfigMessage(provider services.OfficialProvider) string {
+	switch provider.Name {
+	case "gemini":
+		return "Gemini provider is not configured. Set GEMINI_API_KEY."
+	case "groq":
+		return "Groq provider is not configured. Set GROQ_API_KEY."
+	case "openrouter":
+		return "OpenRouter provider is not configured. Set OPENROUTER_API_KEY."
+	case "cloudflare":
+		return "Cloudflare provider is not configured. Set CLOUDFLARE_API_KEY and CLOUDFLARE_ACCOUNT_ID."
+	default:
+		return provider.Name + " provider is not configured."
+	}
+}
+
+func rewriteProviderModelInResponse(body []byte, providerModel string, requestedModel string) []byte {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	if current, _ := payload["model"].(string); current == providerModel || current == "" {
+		payload["model"] = requestedModel
+		rewritten, err := json.Marshal(payload)
+		if err == nil {
+			return rewritten
+		}
+	}
+	return body
 }
 
 func buildDeepSeekPrompt(messages []models.Message) string {

@@ -11,9 +11,9 @@ package agent
 
 import (
 	"fmt"
-	"mimoproxy/internal/models"
-	"mimoproxy/internal/services"
-	"mimoproxy/internal/utils"
+	"flip-ai/internal/models"
+	"flip-ai/internal/services"
+	"flip-ai/internal/utils"
 	"os"
 	"strings"
 )

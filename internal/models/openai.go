@@ -1,6 +1,6 @@
 /*
  * File: openai.go
- * Project: mimoproxy
+ * Project: flip-ai
  * Created: 2026-04-29
  *
  * Last Modified: Wed Apr 29 2026

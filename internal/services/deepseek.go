@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mimoproxy/internal/models"
+	"flip-ai/internal/models"
 	"net/http"
 	"os"
 	"strings"

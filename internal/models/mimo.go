@@ -1,6 +1,6 @@
 /*
  * File: mimo.go
- * Project: mimoproxy
+ * Project: flip-ai
  * Created: 2026-04-29
  */
 

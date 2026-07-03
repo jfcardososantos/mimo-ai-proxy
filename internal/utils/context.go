@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"mimoproxy/internal/models"
+	"flip-ai/internal/models"
 )
 
 // ContextLimits controls how much history is sent to Xiaomi per request.

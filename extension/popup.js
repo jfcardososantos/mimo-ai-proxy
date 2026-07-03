@@ -6,9 +6,28 @@ const importButton = document.getElementById("importSession");
 const importDeepSeekButton = document.getElementById("importDeepSeekSession");
 const openXiaomiButton = document.getElementById("openXiaomi");
 const openDeepSeekButton = document.getElementById("openDeepSeek");
+const geminiApiKeyInput = document.getElementById("geminiApiKey");
+const groqApiKeyInput = document.getElementById("groqApiKey");
+const openRouterApiKeyInput = document.getElementById("openRouterApiKey");
+const openRouterRefererInput = document.getElementById("openRouterReferer");
+const openRouterTitleInput = document.getElementById("openRouterTitle");
+const cloudflareApiKeyInput = document.getElementById("cloudflareApiKey");
+const cloudflareAccountIdInput = document.getElementById("cloudflareAccountId");
+const openGeminiButton = document.getElementById("openGemini");
+const openGroqButton = document.getElementById("openGroq");
+const openOpenRouterButton = document.getElementById("openOpenRouter");
+const openCloudflareButton = document.getElementById("openCloudflare");
+const saveGeminiButton = document.getElementById("saveGemini");
+const saveGroqButton = document.getElementById("saveGroq");
+const saveOpenRouterButton = document.getElementById("saveOpenRouter");
+const saveCloudflareButton = document.getElementById("saveCloudflare");
 
 const XIAOMI_STUDIO_URL = "https://aistudio.xiaomimimo.com/";
 const DEEPSEEK_CHAT_URL = "https://chat.deepseek.com/";
+const GEMINI_KEYS_URL = "https://aistudio.google.com/app/apikey";
+const GROQ_KEYS_URL = "https://console.groq.com/keys";
+const OPENROUTER_KEYS_URL = "https://openrouter.ai/settings/keys";
+const CLOUDFLARE_KEYS_URL = "https://dash.cloudflare.com/profile/api-tokens";
 const COOKIE_NAMES = ["serviceToken", "userId", "xiaomichatbot_ph"];
 const COOKIE_URLS = [
   "https://aistudio.xiaomimimo.com/",
@@ -29,10 +48,12 @@ function normalizeProxyUrl(url) {
 }
 
 async function loadConfig() {
-  const stored = await chrome.storage.local.get(["proxyUrl", "apiKey"]);
+  const stored = await chrome.storage.local.get(["proxyUrl", "apiKey", "openRouterReferer", "openRouterTitle"]);
   proxyUrlInput.value = stored.proxyUrl || "";
   apiKeyInput.value = stored.apiKey || "";
-  setStatus("Configure a URL do flip-mimo-api e clique em Import Xiaomi Session. A API principal não exige token.");
+  openRouterRefererInput.value = stored.openRouterReferer || "";
+  openRouterTitleInput.value = stored.openRouterTitle || "flip-ai";
+  setStatus("Configure a URL do flip-ai e importe a sessão do provedor desejado. A API principal não exige token.");
 }
 
 async function saveConfig() {
@@ -270,6 +291,51 @@ async function importDeepSeekSession() {
   }
 }
 
+function providerHeaders() {
+  const headers = {
+    "Content-Type": "application/json"
+  };
+  const apiKey = apiKeyInput.value.trim();
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
+
+async function saveProviderCredentials(provider, payload) {
+  const proxyUrl = normalizeProxyUrl(proxyUrlInput.value);
+  if (!proxyUrl) {
+    setStatus("Informe a URL do proxy antes de salvar.");
+    return;
+  }
+
+  await saveConfig();
+  setStatus(`Salvando credenciais de ${provider}...`);
+
+  try {
+    const response = await fetch(`${proxyUrl}/auth/provider/import`, {
+      method: "POST",
+      headers: providerHeaders(),
+      body: JSON.stringify({
+        provider,
+        ...payload
+      })
+    });
+
+    const bodyText = await response.text();
+    let prettyBody = bodyText;
+    try {
+      prettyBody = JSON.stringify(JSON.parse(bodyText), null, 2);
+    } catch (error) {
+      // Keep original text when response is not JSON.
+    }
+
+    setStatus(`HTTP ${response.status} ${response.statusText}\n\n${prettyBody}`);
+  } catch (error) {
+    setStatus(`Falha ao salvar ${provider}.\n\n${error.message || String(error)}`);
+  }
+}
+
 saveConfigButton.addEventListener("click", saveConfig);
 importButton.addEventListener("click", async () => {
   await saveConfig();
@@ -284,6 +350,45 @@ openXiaomiButton.addEventListener("click", () => {
 });
 openDeepSeekButton.addEventListener("click", () => {
   chrome.tabs.create({ url: DEEPSEEK_CHAT_URL });
+});
+openGeminiButton.addEventListener("click", () => {
+  chrome.tabs.create({ url: GEMINI_KEYS_URL });
+});
+openGroqButton.addEventListener("click", () => {
+  chrome.tabs.create({ url: GROQ_KEYS_URL });
+});
+openOpenRouterButton.addEventListener("click", () => {
+  chrome.tabs.create({ url: OPENROUTER_KEYS_URL });
+});
+openCloudflareButton.addEventListener("click", () => {
+  chrome.tabs.create({ url: CLOUDFLARE_KEYS_URL });
+});
+saveGeminiButton.addEventListener("click", () => {
+  saveProviderCredentials("gemini", {
+    api_key: geminiApiKeyInput.value.trim()
+  });
+});
+saveGroqButton.addEventListener("click", () => {
+  saveProviderCredentials("groq", {
+    api_key: groqApiKeyInput.value.trim()
+  });
+});
+saveOpenRouterButton.addEventListener("click", async () => {
+  await chrome.storage.local.set({
+    openRouterReferer: openRouterRefererInput.value.trim(),
+    openRouterTitle: openRouterTitleInput.value.trim()
+  });
+  saveProviderCredentials("openrouter", {
+    api_key: openRouterApiKeyInput.value.trim(),
+    http_referer: openRouterRefererInput.value.trim(),
+    app_title: openRouterTitleInput.value.trim()
+  });
+});
+saveCloudflareButton.addEventListener("click", () => {
+  saveProviderCredentials("cloudflare", {
+    api_key: cloudflareApiKeyInput.value.trim(),
+    account_id: cloudflareAccountIdInput.value.trim()
+  });
 });
 
 loadConfig();

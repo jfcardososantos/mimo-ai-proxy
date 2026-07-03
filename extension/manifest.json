@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "flip-mimo-api Session Importer",
+  "name": "flip-ai Session Importer",
   "version": "1.0.0",
-  "description": "Captura a sessão autenticada da Xiaomi AI Studio e envia ao flip-mimo-api.",
+  "description": "Captura sessões autenticadas suportadas e envia ao flip-ai.",
   "permissions": [
     "cookies",
     "storage",
@@ -19,7 +19,7 @@
     "http://*/*"
   ],
   "action": {
-    "default_title": "flip-mimo-api Session Importer",
+    "default_title": "flip-ai Session Importer",
     "default_popup": "popup.html"
   }
 }

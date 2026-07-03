@@ -12,8 +12,8 @@ package routes
 import (
 	"encoding/json"
 	"fmt"
-	"mimoproxy/internal/agent"
-	"mimoproxy/internal/utils"
+	"flip-ai/internal/agent"
+	"flip-ai/internal/utils"
 	"net/http"
 
 	"github.com/gin-gonic/gin"

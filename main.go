@@ -1,6 +1,6 @@
 /*
  * File: main.go
- * Project: mimoproxy
+ * Project: flip-ai
  * Author: Pedro Farias
  * Created: 2026-04-29
  */
@@ -16,8 +16,8 @@ import (
 	"html/template"
 	"io"
 	"log"
-	"mimoproxy/internal/routes"
-	"mimoproxy/internal/services"
+	"flip-ai/internal/routes"
+	"flip-ai/internal/services"
 	"net/http"
 	"net/url"
 	"os"
@@ -98,6 +98,36 @@ func mergeDeepSeekAuth(existing services.StoredAuth, rawCookie string, token str
 	return existing
 }
 
+func mergeProviderAuth(existing services.StoredAuth, provider string, apiKey string, accountID string, httpReferer string, appTitle string) (services.StoredAuth, error) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	apiKey = strings.TrimSpace(apiKey)
+	accountID = strings.TrimSpace(accountID)
+	httpReferer = strings.TrimSpace(httpReferer)
+	appTitle = strings.TrimSpace(appTitle)
+
+	switch provider {
+	case "gemini":
+		existing.GeminiAPIKey = apiKey
+	case "groq":
+		existing.GroqAPIKey = apiKey
+	case "openrouter":
+		existing.OpenRouterAPIKey = apiKey
+		if httpReferer != "" {
+			existing.OpenRouterHTTPReferer = httpReferer
+		}
+		if appTitle != "" {
+			existing.OpenRouterAppTitle = appTitle
+		}
+	case "cloudflare":
+		existing.CloudflareAPIKey = apiKey
+		existing.CloudflareAccountID = accountID
+	default:
+		return existing, fmt.Errorf("unsupported provider %q", provider)
+	}
+
+	return existing, nil
+}
+
 func zipDirectory(root string) ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -153,6 +183,18 @@ func detectAuthSource(stored services.StoredAuth, storedErr error) string {
 		return "data/auth.json"
 	}
 	return "none"
+}
+
+func officialModelListHTML() string {
+	var items []string
+	for _, model := range services.OfficialProviderModels() {
+		id, _ := model["id"].(string)
+		description, _ := model["description"].(string)
+		if id != "" {
+			items = append(items, fmt.Sprintf("<li><code>%s</code> - %s</li>", id, description))
+		}
+	}
+	return strings.Join(items, "")
 }
 
 func validateSetupAccess(c *gin.Context) bool {
@@ -258,13 +300,16 @@ func main() {
 			avgTimeStr = fmt.Sprintf("%dms", sum/int64(len(responseTimes)))
 		}
 
-		modelListHtml := "<li>API models unavailable</li>"
+		modelListHtml := officialModelListHTML()
+		if modelListHtml == "" {
+			modelListHtml = "<li>API models unavailable</li>"
+		}
 		storedAuth, storedAuthErr := services.LoadStoredAuth()
 		authSource := detectAuthSource(storedAuth, storedAuthErr)
 
 		auth, err := services.GetSelectedAuth()
 		if err != nil {
-			modelListHtml = fmt.Sprintf("<li>Auth config invalid: %s</li>", err.Error())
+			modelListHtml = fmt.Sprintf("<li>Xiaomi auth config invalid: %s</li>", err.Error()) + modelListHtml
 		} else {
 			headers := services.GetOfficialHeaders(auth, nil)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -289,13 +334,13 @@ func main() {
 					for _, m := range result.Data.ModelConfigList {
 						modelItems = append(modelItems, fmt.Sprintf("<li><code>%s</code> - %s</li>", m.Model, m.EnIntro))
 					}
-					modelListHtml = strings.Join(modelItems, "")
+					modelListHtml = strings.Join(modelItems, "") + officialModelListHTML()
 				}
 			}
 		}
 
 		c.HTML(http.StatusOK, "dashboard.html", gin.H{
-			"ProductName": "flip-mimo-api",
+			"ProductName": "flip-ai",
 			"Uptime":      fmt.Sprintf("%.0f", time.Since(startTime).Seconds()),
 			"ModelList":   modelListHtml,
 			"AvgLatency":  avgTimeStr,
@@ -326,11 +371,17 @@ func main() {
 			"deepseekConfigured": stored.DeepSeekCookie != "" && stored.DeepSeekToken != "",
 			"storedHasDeepSeekCookie": stored.DeepSeekCookie != "",
 			"storedHasDeepSeekToken":  stored.DeepSeekToken != "",
+			"providers": gin.H{
+				"gemini":     stored.GeminiAPIKey != "" || strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) != "",
+				"groq":       stored.GroqAPIKey != "" || strings.TrimSpace(os.Getenv("GROQ_API_KEY")) != "",
+				"openrouter": stored.OpenRouterAPIKey != "" || strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")) != "",
+				"cloudflare": (stored.CloudflareAPIKey != "" || strings.TrimSpace(os.Getenv("CLOUDFLARE_API_KEY")) != "") && (stored.CloudflareAccountID != "" || strings.TrimSpace(os.Getenv("CLOUDFLARE_ACCOUNT_ID")) != ""),
+			},
 			"selectedPh":       auth.Ph,
 		})
 	})
 
-	r.GET("/downloads/mimo-xiaomi-session-extension.zip", func(c *gin.Context) {
+	serveExtensionDownload := func(c *gin.Context) {
 		zipBytes, err := zipDirectory("extension")
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to package extension", "details": err.Error()})
@@ -338,9 +389,11 @@ func main() {
 		}
 
 		c.Header("Content-Type", "application/zip")
-		c.Header("Content-Disposition", `attachment; filename="mimo-xiaomi-session-extension.zip"`)
+		c.Header("Content-Disposition", `attachment; filename="flip-ai-session-extension.zip"`)
 		c.Data(http.StatusOK, "application/zip", zipBytes)
-	})
+	}
+	r.GET("/downloads/flip-ai-session-extension.zip", serveExtensionDownload)
+	r.GET("/downloads/mimo-xiaomi-session-extension.zip", serveExtensionDownload)
 
 	r.GET("/auth/debug", func(c *gin.Context) {
 		if !validateSetupAccess(c) {
@@ -361,6 +414,13 @@ func main() {
 				"XIAOMI_CHATBOT_PH": maskValue(stored.XiaomiChatbot),
 				"DEEPSEEK_COOKIE":   maskValue(stored.DeepSeekCookie),
 				"DEEPSEEK_TOKEN":    maskValue(stored.DeepSeekToken),
+				"GEMINI_API_KEY":          maskValue(stored.GeminiAPIKey),
+				"GROQ_API_KEY":            maskValue(stored.GroqAPIKey),
+				"OPENROUTER_API_KEY":      maskValue(stored.OpenRouterAPIKey),
+				"OPENROUTER_HTTP_REFERER": maskValue(stored.OpenRouterHTTPReferer),
+				"OPENROUTER_APP_TITLE":    maskValue(stored.OpenRouterAppTitle),
+				"CLOUDFLARE_API_KEY":      maskValue(stored.CloudflareAPIKey),
+				"CLOUDFLARE_ACCOUNT_ID":   maskValue(stored.CloudflareAccountID),
 			},
 			"selectedAuth": gin.H{
 				"token": maskValue(auth.Token),
@@ -539,6 +599,64 @@ func main() {
 		})
 	})
 
+	r.POST("/auth/provider/import", func(c *gin.Context) {
+		if !validateSetupAccess(c) {
+			return
+		}
+
+		var payload struct {
+			Provider    string `json:"provider" form:"provider"`
+			APIKey      string `json:"api_key" form:"api_key"`
+			AccountID   string `json:"account_id" form:"account_id"`
+			HTTPReferer string `json:"http_referer" form:"http_referer"`
+			AppTitle    string `json:"app_title" form:"app_title"`
+		}
+
+		if strings.Contains(c.GetHeader("Content-Type"), "application/json") {
+			body, _ := io.ReadAll(c.Request.Body)
+			if len(strings.TrimSpace(string(body))) > 0 {
+				if err := json.Unmarshal(body, &payload); err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON payload", "details": err.Error()})
+					return
+				}
+			}
+		} else if err := c.ShouldBind(&payload); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid form payload", "details": err.Error()})
+			return
+		}
+
+		if strings.TrimSpace(payload.Provider) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "provider is required"})
+			return
+		}
+		if strings.TrimSpace(payload.APIKey) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "api_key is required"})
+			return
+		}
+		if strings.EqualFold(strings.TrimSpace(payload.Provider), "cloudflare") && strings.TrimSpace(payload.AccountID) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "account_id is required for cloudflare"})
+			return
+		}
+
+		existing, _ := services.LoadStoredAuth()
+		stored, err := mergeProviderAuth(existing, payload.Provider, payload.APIKey, payload.AccountID, payload.HTTPReferer, payload.AppTitle)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid provider", "details": err.Error()})
+			return
+		}
+		if err := services.SaveStoredAuth(stored); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to persist provider credentials", "details": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"saved":      true,
+			"provider":   strings.ToLower(strings.TrimSpace(payload.Provider)),
+			"authSource": "data/auth.json",
+			"storePath":  services.AuthStorePathForDisplay(),
+		})
+	})
+
 	r.POST("/auth/clear", func(c *gin.Context) {
 		if !validateSetupAccess(c) {
 			return
@@ -586,7 +704,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Mimo Proxy listening on %s", address)
+		log.Printf("flip-ai listening on %s", address)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %s\n", err)
 		}

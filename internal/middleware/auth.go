@@ -1,13 +1,13 @@
 /*
  * File: auth.go
- * Project: mimoproxy
+ * Project: flip-ai
  * Created: 2026-04-29
  */
 
 package middleware
 
 import (
-	"mimoproxy/internal/utils"
+	"flip-ai/internal/utils"
 	"net/http"
 	"os"
 	"strings"

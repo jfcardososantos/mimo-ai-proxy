@@ -11,12 +11,19 @@ import (
 const authStorePath = "data/auth.json"
 
 type StoredAuth struct {
-	XiaomiCookie  string `json:"xiaomiCookie,omitempty"`
-	ServiceToken  string `json:"serviceToken,omitempty"`
-	UserID        string `json:"userId,omitempty"`
-	XiaomiChatbot string `json:"xiaomiChatbotPh,omitempty"`
-	DeepSeekCookie string `json:"deepseekCookie,omitempty"`
-	DeepSeekToken  string `json:"deepseekToken,omitempty"`
+	XiaomiCookie          string `json:"xiaomiCookie,omitempty"`
+	ServiceToken          string `json:"serviceToken,omitempty"`
+	UserID                string `json:"userId,omitempty"`
+	XiaomiChatbot         string `json:"xiaomiChatbotPh,omitempty"`
+	DeepSeekCookie        string `json:"deepseekCookie,omitempty"`
+	DeepSeekToken         string `json:"deepseekToken,omitempty"`
+	GeminiAPIKey          string `json:"geminiApiKey,omitempty"`
+	GroqAPIKey            string `json:"groqApiKey,omitempty"`
+	OpenRouterAPIKey      string `json:"openRouterApiKey,omitempty"`
+	OpenRouterHTTPReferer string `json:"openRouterHttpReferer,omitempty"`
+	OpenRouterAppTitle    string `json:"openRouterAppTitle,omitempty"`
+	CloudflareAPIKey      string `json:"cloudflareApiKey,omitempty"`
+	CloudflareAccountID   string `json:"cloudflareAccountId,omitempty"`
 }
 
 func authConfigPath() string {

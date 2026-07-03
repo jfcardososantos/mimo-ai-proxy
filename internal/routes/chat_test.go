@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"mimoproxy/internal/models"
+	"flip-ai/internal/models"
 )
 
 func TestAgentLocationOnlyRegex(t *testing.T) {

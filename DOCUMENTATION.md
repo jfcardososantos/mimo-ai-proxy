@@ -1,6 +1,6 @@
-# Documentação da API — flip-mimo-api
+# Documentação da API — flip-ai
 
-Proxy que expõe os modelos da Xiaomi Mimo via API compatível com OpenAI e Ollama.
+Proxy que expõe Xiaomi Mimo e provedores gratuitos/oficiais via API compatível com OpenAI e Ollama.
 
 ---
 
@@ -30,6 +30,7 @@ Proxy que expõe os modelos da Xiaomi Mimo via API compatível com OpenAI e Olla
    - [`GET /auth/status`](#get-authstatus)
    - [`GET /auth/debug`](#get-authdebug)
    - [`POST /auth/import`](#post-authimport)
+   - [`POST /auth/provider/import`](#post-authproviderimport)
    - [`POST /auth/clear`](#post-authclear)
    - [`POST /auth/extension/import`](#post-authextensionimport)
 9. [Tool Calling / Agentes](#9-tool-calling--agentes)
@@ -636,6 +637,26 @@ curl -s -X POST http://localhost:3000/auth/clear \
 ```
 
 **Resposta:** `{"cleared": true}`
+
+---
+
+### `POST /auth/provider/import`
+
+Salva credenciais de provedores oficiais em `data/auth.json` (requer `API_KEY` se configurada).
+
+```bash
+curl -s http://localhost:3000/auth/provider/import \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <API_KEY>" \
+  -d '{
+    "provider": "gemini",
+    "api_key": "chave_aqui"
+  }' | jq
+```
+
+Providers aceitos: `gemini`, `groq`, `openrouter`, `cloudflare`.
+
+Para Cloudflare, envie também `account_id`. Para OpenRouter, `http_referer` e `app_title` são opcionais.
 
 ---
 

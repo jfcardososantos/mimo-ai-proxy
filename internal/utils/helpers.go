@@ -1,6 +1,6 @@
 /*
  * File: helpers.go
- * Project: mimoproxy
+ * Project: flip-ai
  * Created: 2026-04-29
  *
  * Last Modified: Wed Apr 29 2026
@@ -14,7 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"mimoproxy/internal/models"
+	"flip-ai/internal/models"
 	"strings"
 	"time"
 

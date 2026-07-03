@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>flip-mimo-api Session Importer</title>
+    <title>flip-ai Session Importer</title>
     <style>
       body {
         margin: 0;
         padding: 16px;
-        width: 360px;
+        width: 420px;
         font-family: Georgia, "Times New Roman", serif;
         background: linear-gradient(160deg, #f5efe3 0%, #eadcc4 100%);
         color: #2f2419;
@@ -71,11 +71,21 @@
         font-size: 13px;
         color: #5f5a52;
       }
+      .provider {
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(120, 79, 24, 0.16);
+      }
+      .provider-title {
+        margin: 0 0 8px;
+        font-size: 15px;
+        font-weight: 700;
+      }
     </style>
   </head>
   <body>
-    <h1>flip-mimo-api Importer</h1>
-    <p class="hint">Abra o provedor logado neste navegador. Depois informe a URL do proxy e importe a sessão desejada.</p>
+    <h1>flip-ai Importer</h1>
+    <p class="hint">Xiaomi e DeepSeek usam sessão do navegador. Gemini, Groq, OpenRouter e Cloudflare usam API keys oficiais.</p>
 
     <label for="proxyUrl">Proxy URL</label>
     <input id="proxyUrl" type="url" placeholder="https://seu-proxy.exemplo.com">
@@ -94,6 +104,45 @@
     </div>
 
     <button id="importSession" type="button">Import Xiaomi Session</button>
+
+    <div class="provider">
+      <p class="provider-title">Gemini</p>
+      <input id="geminiApiKey" type="password" placeholder="GEMINI_API_KEY">
+      <div class="row">
+        <button id="openGemini" type="button" class="secondary">Open Gemini</button>
+        <button id="saveGemini" type="button">Save Gemini</button>
+      </div>
+    </div>
+
+    <div class="provider">
+      <p class="provider-title">Groq</p>
+      <input id="groqApiKey" type="password" placeholder="GROQ_API_KEY">
+      <div class="row">
+        <button id="openGroq" type="button" class="secondary">Open Groq</button>
+        <button id="saveGroq" type="button">Save Groq</button>
+      </div>
+    </div>
+
+    <div class="provider">
+      <p class="provider-title">OpenRouter</p>
+      <input id="openRouterApiKey" type="password" placeholder="OPENROUTER_API_KEY">
+      <input id="openRouterReferer" type="url" placeholder="HTTP Referer opcional">
+      <input id="openRouterTitle" type="text" placeholder="App title opcional">
+      <div class="row">
+        <button id="openOpenRouter" type="button" class="secondary">Open OpenRouter</button>
+        <button id="saveOpenRouter" type="button">Save OpenRouter</button>
+      </div>
+    </div>
+
+    <div class="provider">
+      <p class="provider-title">Cloudflare</p>
+      <input id="cloudflareApiKey" type="password" placeholder="CLOUDFLARE_API_KEY">
+      <input id="cloudflareAccountId" type="text" placeholder="CLOUDFLARE_ACCOUNT_ID">
+      <div class="row">
+        <button id="openCloudflare" type="button" class="secondary">Open Cloudflare</button>
+        <button id="saveCloudflare" type="button">Save Cloudflare</button>
+      </div>
+    </div>
 
     <label for="status">Status</label>
     <textarea id="status" readonly></textarea>

@@ -1,6 +1,6 @@
 /*
  * File: tool.go
- * Project: mimoproxy
+ * Project: flip-ai
  * Created: 2026-04-29
  */
 
@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strings"
 
-	"mimoproxy/internal/models"
+	"flip-ai/internal/models"
 )
 
 var (

@@ -10,7 +10,7 @@
 package services
 
 import (
-	"mimoproxy/internal/models"
+	"flip-ai/internal/models"
 	"testing"
 )
 

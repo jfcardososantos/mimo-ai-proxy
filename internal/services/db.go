@@ -1,6 +1,6 @@
 /*
  * File: db.go
- * Project: mimoproxy
+ * Project: flip-ai
  * Created: 2026-04-29
  */
 
@@ -12,7 +12,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"mimoproxy/internal/models"
+	"flip-ai/internal/models"
 	"os"
 	"path/filepath"
 

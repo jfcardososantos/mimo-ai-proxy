@@ -12,7 +12,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
-	"mimoproxy/internal/services"
+	"flip-ai/internal/services"
 )
 
 func LoadOrInitializeState(goalID string, goal string) (*AgentState, error) {

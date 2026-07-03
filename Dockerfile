@@ -1,6 +1,6 @@
 #
 # File: Dockerfile
-# Project: mimoproxy
+# Project: flip-ai
 # Purpose: Container definition
 # Created: 2026-04-28
 #
@@ -18,7 +18,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o mimoproxy main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o flip-ai main.go
 
 # Final stage
 FROM alpine:latest
@@ -46,7 +46,7 @@ ENV SERVICE_TOKEN=$SERVICE_TOKEN \
 RUN mkdir -p /app/data && chmod 777 /app/data
 
 # Copy the binary from the builder stage
-COPY --from=builder /app/mimoproxy .
+COPY --from=builder /app/flip-ai .
 # Copy templates for the dashboard
 COPY --from=builder /app/templates ./templates
 # Copy browser extension assets for download packaging
@@ -54,4 +54,4 @@ COPY --from=builder /app/extension ./extension
 
 EXPOSE 3000
 
-CMD ["./mimoproxy"]
+CMD ["./flip-ai"]
