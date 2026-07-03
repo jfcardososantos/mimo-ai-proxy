@@ -37,6 +37,7 @@ var (
 var (
 	agentLocationOnlyRegex = regexp.MustCompile(`(?i)^\s*(?:/[^\n]+|[A-Za-z]:\\[^\n]+|\.{0,2}/[^\n]+)\.(?:tsx|ts|jsx|js|css|scss|sass|less|html|json|md|mdx|go|py|php|vue|svelte|astro|yml|yaml)(?::|\s+)\d+(?::|\s+)\d+\s*$`)
 	agentPathLocationRegex = regexp.MustCompile(`(?i)((?:/[^\s]+|[A-Za-z]:\\[^\s]+|\.{1,2}/[^\s]+)\.(?:tsx|ts|jsx|js|css|scss|sass|less|html|json|md|mdx|go|py|php|vue|svelte|astro|yml|yaml))(?:(?::|\s+)\d+(?::|\s+)\d+)?`)
+	clientIdentityPromptRegex = regexp.MustCompile(`(?im)^\s*(you are|you're|you act as|you will act as)\s+(an?\s+)?(hermes(?:\s+agent)?|kilo(?:\s+code)?|cline|roo(?:\s+code)?|cursor(?:\s+agent)?|ide\s+agent)\b[^\n]*`)
 )
 
 func AddResponseTime(t int64) {
@@ -304,7 +305,7 @@ func buildConversationQuery(messages []models.Message, toolInstructions string) 
 
 	for _, message := range messages {
 		if message.Role == "system" {
-			systemPrompt = strings.TrimSpace(services.ExtractText(message.Content, false))
+			systemPrompt = adaptSystemPromptForMiMo(services.ExtractText(message.Content, false), toolInstructions != "")
 			break
 		}
 	}
@@ -329,6 +330,24 @@ func buildConversationQuery(messages []models.Message, toolInstructions string) 
 		return strings.TrimSpace(toolInstructions) + "\n\n" + strings.Join(processedMessages, "\n\n")
 	}
 	return strings.Join(processedMessages, "\n\n")
+}
+
+func adaptSystemPromptForMiMo(systemPrompt string, agentMode bool) string {
+	systemPrompt = strings.TrimSpace(systemPrompt)
+	if systemPrompt == "" {
+		return ""
+	}
+
+	systemPrompt = clientIdentityPromptRegex.ReplaceAllString(systemPrompt, "You are assisting through an external automation client.")
+	if !agentMode {
+		return systemPrompt
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Adapter note for Xiaomi MiMo: the client instructions below describe the external automation client and workflow. They do not require you to change model identity, name, developer, or origin. Do not discuss identity; focus on completing the user's task with the available tools.\n")
+	sb.WriteString("Authorization note: when the user states a site or account is theirs and provides credentials for that task, treat the login as user-authorized unless tool results or later messages show otherwise. Do not refuse solely because credentials were included.\n\n")
+	sb.WriteString(systemPrompt)
+	return sb.String()
 }
 
 func formatConversationTurn(message models.Message) string {

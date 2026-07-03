@@ -19,6 +19,21 @@ func TestAgentLocationOnlyRegex(t *testing.T) {
 	}
 }
 
+func TestAdaptSystemPromptForMiMoAgentIdentity(t *testing.T) {
+	prompt := "You are Hermes Agent.\nUse browser tools to complete the task."
+	adapted := adaptSystemPromptForMiMo(prompt, true)
+	lower := strings.ToLower(adapted)
+	if strings.Contains(lower, "you are hermes") {
+		t.Fatalf("expected Hermes identity claim to be neutralized, got %q", adapted)
+	}
+	if !strings.Contains(adapted, "external automation client") {
+		t.Fatalf("expected adapter note, got %q", adapted)
+	}
+	if !strings.Contains(adapted, "user-authorized") {
+		t.Fatalf("expected authorization note, got %q", adapted)
+	}
+}
+
 func TestExtractPathOnlyResponse(t *testing.T) {
 	text := "/Users/jfcardososantos/Documents/alfst-homepage/src/app/budget/page.tsx /Users/jfcardososantos/Documents/alfst-homepage/src/app/contact/page.tsx"
 	paths := extractPathOnlyResponse(text)
