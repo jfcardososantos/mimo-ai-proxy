@@ -208,8 +208,13 @@ func parseDeepSeekData(dataStr string, result *models.DeepSeekChatResult) {
 	if !exists {
 		return
 	}
+	lowerPath := strings.ToLower(path)
 	if text, ok := v.(string); ok && text != "" {
-		if strings.Contains(strings.ToLower(path), "thinking") {
+		cleanText := strings.TrimSpace(text)
+		if cleanText == "FINISHED" || cleanText == "RESPONSE_FINISHED" || strings.Contains(lowerPath, "status") {
+			return
+		}
+		if strings.Contains(lowerPath, "thinking") {
 			result.ReasoningText += text
 			return
 		}

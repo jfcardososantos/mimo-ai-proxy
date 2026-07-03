@@ -978,11 +978,29 @@ func buildDeepSeekPrompt(messages []models.Message) string {
 }
 
 func buildDeepSeekPromptWithTools(messages []models.Message, toolInstructions string) string {
-	prompt := buildDeepSeekPrompt(messages)
 	if strings.TrimSpace(toolInstructions) == "" {
-		return prompt
+		return buildDeepSeekPrompt(messages)
 	}
-	return strings.TrimSpace(toolInstructions) + "\n\n" + prompt
+
+	var systemParts []string
+	var turns []string
+	for _, message := range messages {
+		formatted := formatConversationTurn(message)
+		if strings.TrimSpace(formatted) == "" {
+			continue
+		}
+		if message.Role == "system" || message.Role == "developer" {
+			systemParts = append(systemParts, formatted)
+			continue
+		}
+		turns = append(turns, formatted)
+	}
+
+	parts := make([]string, 0, len(systemParts)+len(turns)+1)
+	parts = append(parts, systemParts...)
+	parts = append(parts, "Tool instructions:\n"+strings.TrimSpace(toolInstructions)+"\n\nDeepSeek adapter rule: never say you will scroll, browse, inspect, read, open, click, run, or check something unless your response also contains the matching <tool_call> block. If more action is needed, output only the tool call and wait for tool results. Final answers are only for completed tasks.")
+	parts = append(parts, turns...)
+	return strings.Join(parts, "\n\n")
 }
 
 func deepSeekThinkingEnabled(model string) bool {

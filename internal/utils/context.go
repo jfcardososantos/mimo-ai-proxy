@@ -60,9 +60,9 @@ func TrimMessagesForProxy(messages []models.Message, limits ContextLimits) []mod
 	var rest []models.Message
 	for _, m := range messages {
 		if m.Role == "system" {
-			system = append(system, truncateMessageContent(m, limits.MaxToolResultChars))
+			system = append(system, truncateMessageContent(m, limits.MaxChars))
 		} else {
-			rest = append(rest, truncateMessageContent(m, limits.MaxToolResultChars))
+			rest = append(rest, truncateMessageForRole(m, limits))
 		}
 	}
 	out = append(out, system...)
@@ -71,6 +71,17 @@ func TrimMessagesForProxy(messages []models.Message, limits ContextLimits) []mod
 	}
 	out = append(out, rest...)
 	return out
+}
+
+func truncateMessageForRole(m models.Message, limits ContextLimits) models.Message {
+	switch m.Role {
+	case "tool":
+		return truncateMessageContent(m, limits.MaxToolResultChars)
+	case "developer":
+		return truncateMessageContent(m, limits.MaxChars)
+	default:
+		return truncateMessageContent(m, limits.MaxChars)
+	}
 }
 
 func truncateMessageContent(m models.Message, maxChars int) models.Message {
