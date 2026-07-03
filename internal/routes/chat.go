@@ -785,11 +785,6 @@ func handleChatCompletions(c *gin.Context) {
 }
 
 func handleDeepSeekChatCompletions(c *gin.Context, input openAIChatInput, completionID string, cacheKey string, targetModel string) {
-	if len(input.Tools) > 0 {
-		utils.SendError(c, http.StatusBadRequest, "DeepSeek web provider does not support tools through this proxy yet", "invalid_request_error", nil)
-		return
-	}
-
 	auth, err := services.GetSelectedDeepSeekAuth()
 	if err != nil {
 		utils.SendError(c, http.StatusInternalServerError, "Invalid DeepSeek auth configuration: "+err.Error(), "server_error", nil)
@@ -817,6 +812,7 @@ func handleDeepSeekChatCompletions(c *gin.Context, input openAIChatInput, comple
 	if sessionID == "" {
 		sessionID, err = services.CreateDeepSeekSession(auth, customHeaders)
 		if err != nil {
+			fmt.Printf("[%s] DeepSeek create session failed: %v\n", completionID, err)
 			utils.SendError(c, http.StatusBadGateway, "Failed to create DeepSeek chat session: "+err.Error(), "server_error", nil)
 			return
 		}
@@ -825,20 +821,35 @@ func handleDeepSeekChatCompletions(c *gin.Context, input openAIChatInput, comple
 		}
 	}
 
-	prompt := buildDeepSeekPrompt(input.Messages)
+	toolChoice := resolveToolChoice(input.ToolChoice)
+	agentMode := len(input.Tools) > 0
+	if agentMode {
+		input.Messages = utils.TrimMessagesForProxy(input.Messages, utils.ContextLimitsFromEnv(true))
+	}
+	toolInstructions := ""
+	if agentMode && utils.AgentFastModeEnabled() {
+		toolInstructions = utils.FormatToolsAsInstructionsCompact(input.Tools, toolChoice)
+	} else if agentMode {
+		toolInstructions = utils.FormatToolsAsInstructionsWithChoice(input.Tools, toolChoice)
+	}
+
+	prompt := buildDeepSeekPromptWithTools(input.Messages, toolInstructions)
 	thinking := deepSeekThinkingEnabled(targetModel)
 	search := input.WebSearch || strings.Contains(strings.ToLower(targetModel), "search")
 
 	resp, err := services.SendDeepSeekChatRequest(auth, sessionID, prompt, thinking, search, customHeaders)
 	if err != nil {
 		if err == services.ErrDeepSeekPoWRequired {
+			fmt.Printf("[%s] DeepSeek PoW required but solver did not return a response\n", completionID)
 			utils.SendError(c, http.StatusNotImplemented, "DeepSeek Web accepted the session but requires a Proof-of-Work response for /api/v0/chat/completion. Cookie + userToken import is implemented; local PoW solving still needs to be added before this web provider can complete chats reliably.", "server_error", nil)
 			return
 		}
+		fmt.Printf("[%s] DeepSeek request failed: %v\n", completionID, err)
 		utils.SendError(c, http.StatusBadGateway, "Failed to call DeepSeek: "+err.Error(), "server_error", nil)
 		return
 	}
 	if resp == nil {
+		fmt.Printf("[%s] DeepSeek returned nil response\n", completionID)
 		utils.SendError(c, http.StatusBadGateway, "DeepSeek returned no response", "server_error", nil)
 		return
 	}
@@ -847,6 +858,7 @@ func handleDeepSeekChatCompletions(c *gin.Context, input openAIChatInput, comple
 		bodyReader, closeBody := services.ReadDeepSeekBody(resp)
 		body, _ := io.ReadAll(bodyReader)
 		closeBody()
+		fmt.Printf("[%s] DeepSeek non-200: %d - %s\n", completionID, resp.StatusCode, string(body))
 		c.JSON(resp.StatusCode, gin.H{"error": "DeepSeek API error", "status": resp.StatusCode, "details": string(body)})
 		return
 	}
@@ -857,16 +869,24 @@ func handleDeepSeekChatCompletions(c *gin.Context, input openAIChatInput, comple
 	result.Usage.PromptTokens = len(prompt) / 4
 	result.Usage.TotalTokens = result.Usage.PromptTokens + result.Usage.CompletionTokens
 
+	cleanText, toolCalls := utils.ParseToolCalls(result.Content)
+	toolCalls = finalizeToolCalls(toolCalls)
+	responseCalls := responseToolCalls(toolCalls, input.ParallelToolCalls, agentMode)
+	if len(toolCalls) > 0 {
+		result.Content = cleanText
+		storePendingToolCalls(sessionHandle, toolCalls)
+	}
+
 	if sessionHandle != "" {
 		services.SaveMessage(sessionHandle, "asst_"+completionID, "assistant", assistantTranscript(result.Content, result.ReasoningText))
 	}
 
 	if input.Stream {
-		writeDeepSeekStreamResponse(c, completionID, targetModel, result)
+		writeDeepSeekStreamResponse(c, completionID, targetModel, result, responseCalls)
 		return
 	}
 
-	response := buildDeepSeekNonStreamResponse(completionID, targetModel, result)
+	response := buildDeepSeekNonStreamResponse(completionID, targetModel, result, responseCalls)
 	services.GlobalCache.Set(cacheKey, response, 5*time.Minute)
 	c.JSON(http.StatusOK, response)
 }
@@ -957,6 +977,14 @@ func buildDeepSeekPrompt(messages []models.Message) string {
 	return strings.Join(turns, "\n\n")
 }
 
+func buildDeepSeekPromptWithTools(messages []models.Message, toolInstructions string) string {
+	prompt := buildDeepSeekPrompt(messages)
+	if strings.TrimSpace(toolInstructions) == "" {
+		return prompt
+	}
+	return strings.TrimSpace(toolInstructions) + "\n\n" + prompt
+}
+
 func deepSeekThinkingEnabled(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
 	if strings.Contains(model, "no-thinking") || strings.Contains(model, "v3") || model == "deepseek-chat" {
@@ -965,7 +993,7 @@ func deepSeekThinkingEnabled(model string) bool {
 	return strings.Contains(model, "reason") || strings.Contains(model, "r1") || strings.Contains(model, "think")
 }
 
-func writeDeepSeekStreamResponse(c *gin.Context, completionID string, model string, result models.DeepSeekChatResult) {
+func writeDeepSeekStreamResponse(c *gin.Context, completionID string, model string, result models.DeepSeekChatResult, toolCalls []models.ToolCall) {
 	c.Header("Content-Type", "text/event-stream; charset=utf-8")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -988,10 +1016,21 @@ func writeDeepSeekStreamResponse(c *gin.Context, completionID string, model stri
 	if result.Content != "" {
 		utils.WriteSSEChunk(c, utils.CreateChatCompletionChunk(completionID, result.Content, model, nil, "", nil, nil))
 	}
+	if len(toolCalls) > 0 {
+		for _, tc := range toolCalls {
+			utils.EmitStreamToolCall(c, completionID, model, tc)
+		}
+		utils.FinalizeChatStream(c, completionID, model, "tool_calls", &result.Usage)
+		return
+	}
 	utils.FinalizeChatStream(c, completionID, model, "stop", &result.Usage)
 }
 
-func buildDeepSeekNonStreamResponse(completionID string, model string, result models.DeepSeekChatResult) gin.H {
+func buildDeepSeekNonStreamResponse(completionID string, model string, result models.DeepSeekChatResult, toolCalls []models.ToolCall) gin.H {
+	finishReason := "stop"
+	if len(toolCalls) > 0 {
+		finishReason = "tool_calls"
+	}
 	return gin.H{
 		"id":      "chatcmpl-" + completionID,
 		"object":  "chat.completion",
@@ -1003,8 +1042,9 @@ func buildDeepSeekNonStreamResponse(completionID string, model string, result mo
 				Role:             "assistant",
 				Content:          result.Content,
 				ReasoningContent: result.ReasoningText,
+				ToolCalls:        toolCalls,
 			},
-			"finish_reason": "stop",
+			"finish_reason": finishReason,
 		}},
 		"usage": result.Usage,
 	}
