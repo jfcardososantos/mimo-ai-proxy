@@ -209,17 +209,50 @@ func parseDeepSeekData(dataStr string, result *models.DeepSeekChatResult) {
 		return
 	}
 	lowerPath := strings.ToLower(path)
-	if text, ok := v.(string); ok && text != "" {
-		cleanText := strings.TrimSpace(text)
-		if cleanText == "FINISHED" || cleanText == "RESPONSE_FINISHED" || strings.Contains(lowerPath, "status") {
-			return
-		}
-		if strings.Contains(lowerPath, "thinking") {
-			result.ReasoningText += text
-			return
-		}
-		result.Content += text
+	text := deepSeekTextValue(v)
+	if text == "" {
+		return
 	}
+	cleanText := strings.TrimSpace(text)
+	if cleanText == "FINISHED" || cleanText == "RESPONSE_FINISHED" || strings.Contains(lowerPath, "status") {
+		return
+	}
+	if strings.Contains(lowerPath, "thinking") {
+		result.ReasoningText += text
+		return
+	}
+	result.Content += text
+}
+
+func deepSeekTextValue(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case []interface{}:
+		var sb strings.Builder
+		for _, item := range v {
+			text := deepSeekTextValue(item)
+			if text == "" {
+				continue
+			}
+			cleanText := strings.TrimSpace(text)
+			if cleanText == "FINISHED" || cleanText == "RESPONSE_FINISHED" {
+				continue
+			}
+			sb.WriteString(text)
+		}
+		return sb.String()
+	case map[string]interface{}:
+		for _, key := range []string{"content", "text", "delta"} {
+			if text, ok := v[key].(string); ok {
+				return text
+			}
+		}
+		if response, ok := v["response"].(map[string]interface{}); ok {
+			return deepSeekTextValue(response)
+		}
+	}
+	return ""
 }
 
 func readMaybeGzip(resp *http.Response) ([]byte, error) {

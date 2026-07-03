@@ -31,3 +31,24 @@ func TestParseDeepSeekDataSkipsStatusText(t *testing.T) {
 		t.Fatalf("unexpected content: %q", result.Content)
 	}
 }
+
+func TestParseDeepSeekDataReadsNestedInitialContent(t *testing.T) {
+	result := models.DeepSeekChatResult{}
+
+	parseDeepSeekData(`{"p":"response/content","v":{"content":"O"}}`, &result)
+	parseDeepSeekData(`{"p":"response/content","v":"la"}`, &result)
+
+	if result.Content != "Ola" {
+		t.Fatalf("expected nested first token to be preserved, got %q", result.Content)
+	}
+}
+
+func TestParseDeepSeekDataReadsArrayContent(t *testing.T) {
+	result := models.DeepSeekChatResult{}
+
+	parseDeepSeekData(`{"p":"response/content","v":[{"text":"O"},"la","FINISHED"]}`, &result)
+
+	if result.Content != "Ola" {
+		t.Fatalf("expected array content to be preserved without status, got %q", result.Content)
+	}
+}
