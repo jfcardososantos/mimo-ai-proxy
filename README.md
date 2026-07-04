@@ -239,7 +239,7 @@ Expõe a versão compatível do adaptador Ollama.
 
 #### `GET /health`
 
-Retorna estado do processo e da sessão.
+Retorna estado do processo e da sessão. Não exige API key, mesmo quando `REQUEST_API_KEY` estiver configurada.
 
 #### `GET /auth/status`
 
@@ -269,7 +269,7 @@ Configure o cliente para usar:
 
 - Base URL: `http://localhost:3000/v1`
 
-Não envie `Authorization` para as rotas públicas, a menos que seu cliente exija algum valor fictício. O backend não precisa dele para `/v1/*`.
+Se `REQUEST_API_KEY` estiver configurada, envie `Authorization: Bearer <REQUEST_API_KEY>` ou `X-API-Key`. A rota `/health` continua aberta para monitoramento.
 
 ### Ollama-compatible
 

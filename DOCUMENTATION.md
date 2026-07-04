@@ -574,6 +574,8 @@ curl -s http://localhost:3000/open-apis/bot/chat \
 
 ### `GET /health`
 
+Aberto para monitoramento; não exige API key.
+
 ```bash
 curl -s http://localhost:3000/health | jq
 ```
@@ -832,6 +834,8 @@ O proxy suporta upload de imagens para a Xiaomi. O processo é:
 ## 12. Exemplos Rápidos
 
 ### Testar se o servidor está rodando
+
+Não precisa enviar API key.
 
 ```bash
 curl http://localhost:3000/health
