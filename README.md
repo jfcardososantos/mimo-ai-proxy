@@ -224,6 +224,7 @@ curl http://localhost:3000/api/chat \
 #### `POST /api/generate`
 
 Compatível com o formato `generate` do Ollama.
+Aceita os mesmos modelos roteáveis do chat: `mimo-*`, `deepseek*`, `gemini-*`, `groq/*`, `openrouter/*` e `cf/*`.
 
 Se `stream` não for enviado, o proxy assume `false`.
 
