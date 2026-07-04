@@ -66,21 +66,9 @@ func handleOllamaTags(c *gin.Context) {
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&result); err == nil && result.Code == 0 {
 			modelsList := make([]gin.H, 0, len(result.Data.ModelConfigList))
+			modelsList = append(modelsList, ollamaModelTag("default", "flip-ai"))
 			for _, m := range result.Data.ModelConfigList {
-				modelsList = append(modelsList, gin.H{
-					"name":        m.Model,
-					"model":       m.Model,
-					"modified_at": time.Now().UTC().Format(time.RFC3339Nano),
-					"size":        int64(0),
-					"digest":      "",
-					"details": gin.H{
-						"format":             "xiaomi",
-						"family":             "mimo",
-						"families":           []string{"mimo"},
-						"parameter_size":     "",
-						"quantization_level": "",
-					},
-				})
+				modelsList = append(modelsList, ollamaModelTag(m.Model, "mimo"))
 			}
 			response := gin.H{"models": modelsList}
 			services.GlobalCache.Set("ollama_models_list", response, 30*time.Minute)
@@ -89,20 +77,27 @@ func handleOllamaTags(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"models": []gin.H{{
-		"name":        "mimo-v2.5-pro",
-		"model":       "mimo-v2.5-pro",
+	c.JSON(http.StatusOK, gin.H{"models": []gin.H{
+		ollamaModelTag("default", "flip-ai"),
+		ollamaModelTag("mimo-v2.5-pro", "mimo"),
+	}})
+}
+
+func ollamaModelTag(model string, family string) gin.H {
+	return gin.H{
+		"name":        model,
+		"model":       model,
 		"modified_at": time.Now().UTC().Format(time.RFC3339Nano),
 		"size":        int64(0),
 		"digest":      "",
 		"details": gin.H{
-			"format":             "xiaomi",
-			"family":             "mimo",
-			"families":           []string{"mimo"},
+			"format":             family,
+			"family":             family,
+			"families":           []string{family},
 			"parameter_size":     "",
 			"quantization_level": "",
 		},
-	}}})
+	}
 }
 
 func handleOllamaChat(c *gin.Context) {
@@ -191,9 +186,15 @@ type ollamaRequestSpec struct {
 func runOllamaRequest(c *gin.Context, spec ollamaRequestSpec) {
 	startedAt := time.Now()
 	completionID := utils.GenerateID()
-	selectedModel := strings.TrimSpace(spec.Model)
-	if selectedModel == "" {
-		selectedModel = "mimo-v2.5-pro"
+	selectedModel := services.ResolveRequestedModel(spec.Model)
+	spec.Model = selectedModel
+	if services.IsDeepSeekModel(selectedModel) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "DeepSeek models are only supported through /v1/chat/completions"})
+		return
+	}
+	if _, ok := services.SelectOfficialProvider(selectedModel); ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Official provider models are only supported through /v1/chat/completions"})
+		return
 	}
 
 	toolChoice := "auto"

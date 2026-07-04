@@ -123,7 +123,11 @@ func RegisterChatRoutes(r *gin.Engine, authMiddleware gin.HandlerFunc) {
 		v1.GET("/chat/history/:conversationId", handleGetHistory)
 	}
 
-	r.POST("/open-apis/bot/chat", handleDirectProxy)
+	if authMiddleware != nil {
+		r.POST("/open-apis/bot/chat", authMiddleware, handleDirectProxy)
+	} else {
+		r.POST("/open-apis/bot/chat", handleDirectProxy)
+	}
 	registerOllamaRoutes(r, authMiddleware)
 }
 
@@ -184,6 +188,13 @@ func handleModels(c *gin.Context) {
 }
 
 func appendDeepSeekModels(modelsList []map[string]interface{}) []map[string]interface{} {
+	modelsList = append(modelsList, map[string]interface{}{
+		"id":          "default",
+		"object":      "model",
+		"created":     1700000000,
+		"owned_by":    "flip-ai",
+		"description": "Alias resolved by flip-ai DEFAULT_MODEL/defaultModel",
+	})
 	modelsList = append(modelsList, services.OfficialProviderModels()...)
 	return append(modelsList,
 		map[string]interface{}{
@@ -452,7 +463,6 @@ func handleChatCompletions(c *gin.Context) {
 		return
 	}
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyCopy))
-	cacheKey := fmt.Sprintf("req_%x", bodyCopy)
 	fmt.Printf("Incoming request size: %d bytes\n", len(bodyCopy))
 
 	var input openAIChatInput
@@ -461,6 +471,10 @@ func handleChatCompletions(c *gin.Context) {
 		utils.SendError(c, http.StatusBadRequest, "Invalid request body", "invalid_request_error", nil)
 		return
 	}
+
+	targetModel := services.ResolveRequestedModel(input.Model)
+	input.Model = targetModel
+	cacheKey := fmt.Sprintf("req_%s_%x", targetModel, bodyCopy)
 
 	// Não cachear agent/tool loops — evita repetir respostas "stop" sem tool_calls.
 	if !input.Stream && len(input.Tools) == 0 {
@@ -475,10 +489,6 @@ func handleChatCompletions(c *gin.Context) {
 		return
 	}
 
-	targetModel := strings.TrimSpace(input.Model)
-	if targetModel == "" {
-		targetModel = "mimo-v2.5-pro"
-	}
 	if services.IsDeepSeekModel(targetModel) {
 		handleDeepSeekChatCompletions(c, input, completionID, cacheKey, targetModel)
 		return
@@ -528,7 +538,7 @@ func handleChatCompletions(c *gin.Context) {
 						ID:      "chatcmpl-" + completionID,
 						Object:  "chat.completion.chunk",
 						Created: time.Now().Unix(),
-						Model:   input.Model,
+								Model:   targetModel,
 						Choices: []models.Choice{
 							{
 								Index: 0,
@@ -652,12 +662,12 @@ func handleChatCompletions(c *gin.Context) {
 	fmt.Printf("[%s] Query size: %d chars | agent=%v | messages=%d\n",
 		completionID, len(query), agentMode, len(input.Messages))
 
-	enableThinking := !strings.Contains(input.Model, "no-thinking")
+	enableThinking := !strings.Contains(targetModel, "no-thinking")
 	if len(input.Tools) > 0 {
 		// Com tools, thinking longo costuma gerar só planejamento e finish_reason=stop no Kilo/agent.
 		enableThinking = false
 		if os.Getenv("AGENT_ENABLE_THINKING") == "true" || os.Getenv("AGENT_ENABLE_THINKING") == "1" {
-			enableThinking = !strings.Contains(input.Model, "no-thinking")
+			enableThinking = !strings.Contains(targetModel, "no-thinking")
 		}
 	}
 	webSearchStatus := "disabled"

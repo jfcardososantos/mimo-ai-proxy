@@ -1,531 +1,324 @@
-<html>
-    <head>
-        <title>{{.ProductName}}</title>
-        <style>
-            :root {
-                --bg: #f6efe4;
-                --bg-deep: #e7d2ad;
-                --paper: rgba(255, 251, 245, 0.9);
-                --panel: rgba(255, 248, 240, 0.76);
-                --ink: #1e2430;
-                --muted: #657286;
-                --line: rgba(89, 67, 36, 0.14);
-                --accent: #0d8c67;
-                --accent-2: #a7531d;
-                --ok: #169a59;
-                --warn: #d97706;
-                --dark: #1f1712;
-                --dark-soft: #2a211b;
-            }
-            * { box-sizing: border-box; }
-            body {
-                margin: 0;
-                color: var(--ink);
-                font-family: Georgia, "Times New Roman", serif;
-                background:
-                    radial-gradient(circle at 10% 10%, rgba(255,255,255,0.75), transparent 26%),
-                    radial-gradient(circle at 85% 18%, rgba(13, 140, 103, 0.12), transparent 20%),
-                    linear-gradient(135deg, var(--bg) 0%, var(--bg-deep) 100%);
-            }
-            .shell { max-width: 1260px; margin: 0 auto; padding: 22px 18px 40px; }
-            .card {
-                background: var(--paper);
-                border: 1px solid var(--line);
-                border-radius: 30px;
-                padding: 22px;
-                box-shadow: 0 30px 80px rgba(70, 45, 18, 0.14);
-                backdrop-filter: blur(10px);
-            }
-            .hero {
-                display: grid;
-                grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
-                gap: 18px;
-            }
-            .hero-main, .section {
-                background: var(--panel);
-                border: 1px solid var(--line);
-                border-radius: 24px;
-                padding: 20px;
-            }
-            .hero-main {
-                min-height: 360px;
-                position: relative;
-                overflow: hidden;
-            }
-            .hero-main::after {
-                content: "";
-                position: absolute;
-                right: -50px;
-                bottom: -70px;
-                width: 260px;
-                height: 260px;
-                border-radius: 999px;
-                background: radial-gradient(circle, rgba(13, 140, 103, 0.18), rgba(13, 140, 103, 0));
-            }
-            .hero-side {
-                display: grid;
-                gap: 18px;
-            }
-            .badge {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                padding: 6px 12px;
-                border-radius: 999px;
-                background: #e4f5ef;
-                color: #0b7557;
-                text-transform: uppercase;
-                letter-spacing: 0.08em;
-                font-size: 0.82rem;
-            }
-            .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--ok); }
-            .dot.warn { background: var(--warn); }
-            h1, h2, h3 { margin: 0 0 12px; color: #261c16; }
-            h1 {
-                margin-top: 16px;
-                font-size: clamp(2.8rem, 5vw, 4.8rem);
-                line-height: 0.92;
-                letter-spacing: -0.05em;
-                max-width: 9ch;
-            }
-            h2 { font-size: 1.35rem; }
-            h3 { font-size: 1.05rem; }
-            p { margin: 0 0 12px; }
-            .lede { font-size: 1.08rem; max-width: 58ch; }
-            .muted { color: var(--muted); }
-            .hero-note {
-                margin-top: 18px;
-                padding: 14px 16px;
-                border-radius: 16px;
-                border: 1px solid rgba(13, 140, 103, 0.16);
-                background: rgba(255,255,255,0.68);
-                max-width: 60ch;
-            }
-            .hero-note.warn {
-                border-color: rgba(217, 119, 6, 0.22);
-                background: rgba(255, 245, 232, 0.85);
-            }
-            .actions {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 12px;
-                margin-top: 18px;
-            }
-            .stats-row, .grid, .endpoint-grid {
-                display: grid;
-                gap: 16px;
-                margin-top: 18px;
-            }
-            .stats-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-            .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .endpoint-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-            .metric, .endpoint-card {
-                background: rgba(255,255,255,0.63);
-                border: 1px solid var(--line);
-                border-radius: 18px;
-                padding: 16px;
-            }
-            .metric strong {
-                display: block;
-                font-size: 1.28rem;
-                margin-bottom: 4px;
-            }
-            .eyebrow {
-                display: inline-block;
-                margin-bottom: 8px;
-                color: var(--accent-2);
-                font-size: 0.82rem;
-                text-transform: uppercase;
-                letter-spacing: 0.08em;
-            }
-            .endpoint-head {
-                display: flex;
-                align-items: start;
-                justify-content: space-between;
-                gap: 12px;
-                margin-bottom: 10px;
-            }
-            .method {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                min-width: 54px;
-                padding: 4px 10px;
-                border-radius: 999px;
-                background: #e2f5ee;
-                color: #0d7557;
-                font-size: 0.8rem;
-                font-weight: 700;
-                letter-spacing: 0.08em;
-            }
-            .method.get {
-                background: #efe3cf;
-                color: #85501a;
-            }
-            code, textarea, input, pre, button {
-                font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-            }
-            code {
-                background: #f3e5cf;
-                padding: 0.18rem 0.45rem;
-                border-radius: 7px;
-                font-size: 0.92em;
-            }
-            .snippet, .response {
-                margin: 0;
-                padding: 15px;
-                border-radius: 18px;
-                overflow: auto;
-                white-space: pre-wrap;
-            }
-            .snippet {
-                background: var(--dark);
-                color: #f6efe6;
-                border: 1px solid rgba(255,255,255,0.07);
-                font-size: 0.9rem;
-            }
-            .response {
-                min-height: 280px;
-                background: var(--dark-soft);
-                color: #f6efe6;
-            }
-            textarea, input {
-                width: 100%;
-                border: 1px solid #d9c8ab;
-                border-radius: 14px;
-                background: #fffdf8;
-                color: var(--ink);
-                padding: 0.95rem 1rem;
-            }
-            textarea { min-height: 160px; resize: vertical; }
-            .mini { min-height: 72px; }
-            .field-label {
-                display: block;
-                margin: 12px 0 8px;
-                font-size: 0.86rem;
-                text-transform: uppercase;
-                letter-spacing: 0.08em;
-                color: #7a5730;
-            }
-            button {
-                border: none;
-                border-radius: 999px;
-                padding: 0.88rem 1.15rem;
-                cursor: pointer;
-                background: var(--accent);
-                color: white;
-                font-size: 0.92rem;
-            }
-            button.secondary {
-                background: #f0dfc5;
-                color: #694823;
-            }
-            button.ghost {
-                background: rgba(255,255,255,0.75);
-                color: #3a403f;
-                border: 1px solid var(--line);
-            }
-            ul { margin: 0; padding-left: 1.1rem; }
-            li + li { margin-top: 0.35rem; }
-            .inline-meta {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 10px;
-                color: var(--muted);
-                font-size: 0.93rem;
-            }
-            .full { grid-column: 1 / -1; }
-            @media (max-width: 980px) {
-                .hero, .stats-row, .grid, .endpoint-grid { grid-template-columns: 1fr; }
-                h1 { max-width: none; }
-            }
-            @media (max-width: 560px) {
-                .shell { padding: 12px 10px 26px; }
-                .card { padding: 14px; border-radius: 22px; }
-                .hero-main, .section { padding: 16px; }
-                .actions a, .actions button { width: 100%; }
-                .actions a button { width: 100%; }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="shell">
-            <div class="card">
-                <div class="hero">
-                    <div class="hero-main">
-                        <div class="badge"><span class="dot {{if .AuthError}}warn{{end}}"></span>{{.ProductName}}</div>
-                        <h1>Use os endpoints e siga.</h1>
-                        <p class="lede">A dashboard agora é operacional: veja os endpoints, copie `curl`, confira o status da sessão importada pela extensão e teste as rotas sem rodeio.</p>
-                        {{if .AuthError}}
-                        <div class="hero-note warn">
-                            <strong>Sessão indisponível:</strong> {{.AuthError}}
-                        </div>
-                        {{else}}
-                        <div class="hero-note">
-                            <strong>Sessão ativa.</strong> A autenticação com a Xiaomi está sendo lida de <code>{{.AuthStore}}</code>.
-                        </div>
-                        {{end}}
-                        <div class="actions">
-                            <a href="/downloads/flip-ai-session-extension.zip"><button type="button">Baixar extensão</button></a>
-                            <a href="/v1/models"><button class="secondary" type="button">Abrir /v1/models</button></a>
-                            <a href="/auth/status"><button class="ghost" type="button">Ver /auth/status</button></a>
-                        </div>
-                        <div class="stats-row">
-                            <div class="metric">
-                                <strong>{{.Uptime}}s</strong>
-                                <span class="muted">Uptime desta instância</span>
-                            </div>
-                            <div class="metric">
-                                <strong>{{.AuthSource}}</strong>
-                                <span class="muted">Origem da sessão ativa</span>
-                            </div>
-                            <div class="metric">
-                                <strong>{{.AvgLatency}}</strong>
-                                <span class="muted">Latência média até a Xiaomi</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="hero-side">
-                        <div class="section">
-                            <span class="eyebrow">Setup</span>
-                            <h2>Fluxo recomendado</h2>
-                            <textarea class="mini" readonly>1. Faça login no Xiaomi AI Studio.
-2. Baixe a extensão.
-3. Instale em chrome://extensions com "Developer mode".
-4. Abra o popup da extensão e informe a URL do proxy.
-5. Clique em "Import Xiaomi Session".
-6. Use /v1/chat/completions ou /api/chat normalmente.</textarea>
-                            <p class="muted">Sem QR code. Sem cookie bruto. A fonte de verdade da sessão fica no arquivo salvo pela extensão.</p>
-                        </div>
-                        <div class="section">
-                            <span class="eyebrow">Modelos</span>
-                            <h2>Modelos ativos</h2>
-                            <ul>{{.ModelList | safe}}</ul>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="section" style="margin-top: 18px;">
-                    <span class="eyebrow">Endpoints</span>
-                    <h2>Catálogo rápido</h2>
-                    <p class="muted">Cada bloco abaixo já vem com um exemplo copiável para uso imediato.</p>
-                    <div class="endpoint-grid">
-                        <div class="endpoint-card">
-                            <div class="endpoint-head">
-                                <div>
-                                    <div class="method">POST</div>
-                                    <h3><code>/v1/chat/completions</code></h3>
-                                </div>
-                                <button class="secondary" type="button" onclick="copySnippet('curl-openai')">Copiar curl</button>
-                            </div>
-                            <p class="muted">Endpoint principal, compatível com OpenAI.</p>
-                            <pre id="curl-openai" class="snippet">curl http://localhost:3000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "mimo-v2.5-pro",
-    "messages": [
-      {"role": "user", "content": "Responda apenas: ok"}
-    ],
-    "stream": false
-  }'</pre>
-                        </div>
-                        <div class="endpoint-card">
-                            <div class="endpoint-head">
-                                <div>
-                                    <div class="method">POST</div>
-                                    <h3><code>/api/chat</code></h3>
-                                </div>
-                                <button class="secondary" type="button" onclick="copySnippet('curl-ollama-chat')">Copiar curl</button>
-                            </div>
-                            <p class="muted">Compatível com clientes Ollama. Se <code>stream</code> não for enviado, o padrão é <code>false</code>.</p>
-                            <pre id="curl-ollama-chat" class="snippet">curl http://localhost:3000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "mimo-v2.5-pro",
-    "messages": [
-      {"role": "user", "content": "Olá"}
-    ]
-  }'</pre>
-                        </div>
-                        <div class="endpoint-card">
-                            <div class="endpoint-head">
-                                <div>
-                                    <div class="method">POST</div>
-                                    <h3><code>/api/generate</code></h3>
-                                </div>
-                                <button class="secondary" type="button" onclick="copySnippet('curl-generate')">Copiar curl</button>
-                            </div>
-                            <p class="muted">Fluxo de geração simples no formato Ollama. Se <code>stream</code> não for enviado, o padrão é <code>false</code>.</p>
-                            <pre id="curl-generate" class="snippet">curl http://localhost:3000/api/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "mimo-v2.5-pro",
-    "prompt": "Explique este projeto em uma frase.",
-    "stream": false
-  }'</pre>
-                        </div>
-                        <div class="endpoint-card">
-                            <div class="endpoint-head">
-                                <div>
-                                    <div class="method get">GET</div>
-                                    <h3><code>/v1/models</code>, <code>/api/tags</code>, <code>/health</code></h3>
-                                </div>
-                                <button class="secondary" type="button" onclick="copySnippet('curl-readonly')">Copiar curl</button>
-                            </div>
-                            <p class="muted">Endpoints de leitura e diagnóstico.</p>
-                            <pre id="curl-readonly" class="snippet">curl http://localhost:3000/v1/models
-curl http://localhost:3000/api/tags
-curl http://localhost:3000/health</pre>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="grid">
-                    <div class="section">
-                        <span class="eyebrow">Sessão</span>
-                        <h2>Status e operação</h2>
-                        <div class="inline-meta">
-                            <span><strong>Store:</strong> <code>{{.AuthStore}}</code></span>
-                            <span><strong>Origem:</strong> {{.AuthSource}}</span>
-                        </div>
-                        <p class="muted" style="margin-top: 14px;">Se precisar renovar a autenticação, reimporte pela extensão. Se quiser limpar a sessão local, use o formulário abaixo.</p>
-                        <form method="post" action="/auth/clear">
-                            <label class="field-label" for="adminApiKey">API Key administrativa</label>
-                            <input id="adminApiKey" type="password" name="api_key" placeholder="Preencha apenas se API_KEY estiver configurada"/>
-                            <div class="actions">
-                                <button class="secondary" type="submit">Limpar sessão salva</button>
-                                <a href="/auth/debug"><button class="ghost" type="button">Abrir /auth/debug</button></a>
-                            </div>
-                        </form>
-                    </div>
-                    <div class="section">
-                        <span class="eyebrow">Métricas</span>
-                        <h2>Uso acumulado</h2>
-                        <ul>{{.Stats | safe}}</ul>
-                    </div>
-                </div>
-
-                <div class="section full" style="margin-top: 18px;">
-                    <span class="eyebrow">Testador</span>
-                    <h2>Teste a API sem sair da página</h2>
-                    <p class="muted">Os campos abaixo estão separados por função: modelo, payload e resposta.</p>
-                    <div class="grid">
-                        <div>
-                            <label class="field-label" for="chatModel">Modelo</label>
-                            <input id="chatModel" type="text" value="mimo-v2.5-pro" placeholder="Ex.: mimo-v2.5-pro"/>
-                            <div class="actions">
-                                <button type="button" onclick="callSimpleRoute('/health')">Testar /health</button>
-                                <button type="button" class="secondary" onclick="callSimpleRoute('/auth/status')">Testar /auth/status</button>
-                                <button type="button" class="secondary" onclick="callSimpleRoute('/v1/models')">Testar /v1/models</button>
-                            </div>
-                            <label class="field-label" for="chatPayload">Payload JSON</label>
-                            <textarea id="chatPayload">{
-  "model": "mimo-v2.5-pro",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Responda com uma frase curta confirmando que o proxy está funcionando."
-    }
-  ],
-  "stream": false
-}</textarea>
-                            <div class="actions">
-                                <button type="button" onclick="callChatCompletions(false)">Enviar /v1/chat/completions</button>
-                                <button type="button" class="secondary" onclick="callChatCompletions(true)">Enviar streaming</button>
-                                <button type="button" class="ghost" onclick="copyPayload()">Copiar payload</button>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="field-label" for="requestInfo">Requisição</label>
-                            <textarea id="requestInfo" class="mini" readonly>Pronto para testar.</textarea>
-                            <label class="field-label" for="responsePanel">Resposta</label>
-                            <pre id="responsePanel" class="response">A resposta aparece aqui.</pre>
-                        </div>
-                    </div>
-                </div>
-            </div>
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.ProductName}} dashboard</title>
+    <style>
+      :root {
+        --background: #f8fafc;
+        --foreground: #0f172a;
+        --muted: #64748b;
+        --card: #ffffff;
+        --border: #e2e8f0;
+        --accent: #0f766e;
+        --accent-foreground: #ffffff;
+        --warning: #b45309;
+        --danger: #b91c1c;
+        --soft: #f1f5f9;
+        --radius: 8px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+      a { color: inherit; text-decoration: none; }
+      .shell { max-width: 1200px; margin: 0 auto; padding: 24px; }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .brand { display: flex; flex-direction: column; gap: 4px; }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: 1.6rem; line-height: 1.2; }
+      h2 { font-size: 1.05rem; }
+      h3 { font-size: 0.95rem; }
+      .muted { color: var(--muted); }
+      .nav { display: flex; gap: 8px; flex-wrap: wrap; }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0 14px;
+        background: var(--card);
+        color: var(--foreground);
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+      .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-foreground); }
+      .button[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+      .grid { display: grid; gap: 16px; }
+      .metrics { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 16px; }
+      .main-grid { grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr); }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px;
+      }
+      .metric { display: flex; flex-direction: column; gap: 8px; }
+      .metric strong { font-size: 1.45rem; line-height: 1; }
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        border-radius: 999px;
+        padding: 0 10px;
+        background: #ccfbf1;
+        color: #115e59;
+        font-size: 0.78rem;
+        font-weight: 600;
+      }
+      .badge.warning { background: #fef3c7; color: var(--warning); }
+      .badge.danger { background: #fee2e2; color: var(--danger); }
+      table { width: 100%; border-collapse: collapse; }
+      th, td {
+        padding: 11px 10px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+        font-size: 0.9rem;
+      }
+      th { color: var(--muted); font-weight: 600; background: var(--soft); }
+      tr:last-child td { border-bottom: 0; }
+      code {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        background: var(--soft);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 2px 5px;
+        font-size: 0.86em;
+      }
+      .empty {
+        border: 1px dashed var(--border);
+        border-radius: var(--radius);
+        padding: 22px;
+        color: var(--muted);
+        background: #ffffff;
+      }
+      .provider-list { display: grid; gap: 10px; }
+      .provider {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+      }
+      .provider small { display: block; color: var(--muted); margin-top: 3px; }
+      .endpoint-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 16px; }
+      pre {
+        margin: 0;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: #020617;
+        color: #e2e8f0;
+        padding: 14px;
+        font-size: 0.86rem;
+        line-height: 1.5;
+      }
+      .stack { display: grid; gap: 16px; }
+      .notice {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px;
+        background: #fff7ed;
+        color: #7c2d12;
+      }
+      @media (max-width: 920px) {
+        .metrics, .main-grid, .endpoint-grid { grid-template-columns: 1fr; }
+        .topbar { align-items: flex-start; flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1>{{.ProductName}}</h1>
+          <p class="muted">Dashboard operacional da API</p>
         </div>
-        <script>
-            function buildPublicHeaders() {
-                return { "Accept": "application/json" };
-            }
+        <nav class="nav">
+          <a class="button" href="/v1/models">Modelos</a>
+          <a class="button" href="/health">Health</a>
+          {{if .SettingsEnabled}}
+          <a class="button primary" href="/settings">Configurações</a>
+          {{else}}
+          <span class="button" aria-disabled="true">Configurações sem senha</span>
+          {{end}}
+        </nav>
+      </header>
 
-            function setRequestInfo(text) {
-                document.getElementById("requestInfo").value = text;
-            }
+      {{if .StoredError}}
+      <div class="notice" style="margin-bottom: 16px;">Erro ao ler <code>{{.AuthStore}}</code>: {{.StoredError}}</div>
+      {{end}}
 
-            function setResponse(text) {
-                document.getElementById("responsePanel").textContent = text;
-            }
+      <section class="grid metrics">
+        <div class="card metric">
+          <span class="muted">Status da API</span>
+          <strong>{{.Status}}</strong>
+        </div>
+        <div class="card metric">
+          <span class="muted">Requests de API</span>
+          <strong>{{.Usage.TotalRequests}}</strong>
+        </div>
+        <div class="card metric">
+          <span class="muted">Chats e completions</span>
+          <strong>{{.Usage.ChatRequests}}</strong>
+        </div>
+        <div class="card metric">
+          <span class="muted">Latência média</span>
+          <strong>{{.ProviderUsage.AvgLatency}}</strong>
+        </div>
+        <div class="card metric">
+          <span class="muted">Modelo default</span>
+          <strong>{{.DefaultModel}}</strong>
+        </div>
+        <div class="card metric">
+          <span class="muted">API key nas requests</span>
+          {{if .RequestAuth}}
+          <strong>ativa</strong>
+          {{else}}
+          <strong>desativada</strong>
+          {{end}}
+        </div>
+      </section>
 
-            async function copyText(text) {
-                await navigator.clipboard.writeText(text);
-            }
+      <section class="grid main-grid">
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <h2>Modelos disponíveis</h2>
+              <p class="muted">Lista filtrada pelas credenciais configuradas.</p>
+            </div>
+            <span class="badge">{{len .Models}} ativos</span>
+          </div>
+          {{if .Models}}
+          <table>
+            <thead>
+              <tr>
+                <th>Modelo</th>
+                <th>Provedor</th>
+                <th>Uso</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Models}}
+              <tr>
+                <td><code>{{.ID}}</code></td>
+                <td>{{.Provider}}</td>
+                <td class="muted">{{.Description}}</td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+          {{else}}
+          <div class="empty">Nenhum modelo está utilizável agora. Entre em configurações e importe uma sessão ou chave de provedor.</div>
+          {{end}}
+        </div>
 
-            async function copySnippet(id) {
-                const text = document.getElementById(id).textContent;
-                await copyText(text);
-            }
+        <aside class="stack">
+          <div class="card">
+            <div class="section-head">
+              <div>
+                <h2>Provedores</h2>
+                <p class="muted">Estado atual por origem de credencial.</p>
+              </div>
+            </div>
+            <div class="provider-list">
+              {{range .Providers}}
+              <div class="provider">
+                <div>
+                  <strong>{{.Name}}</strong>
+                  <small>{{.Source}}{{if .Detail}} · {{.Detail}}{{end}}</small>
+                </div>
+                {{if .Configured}}
+                <span class="badge">ativo</span>
+                {{else}}
+                <span class="badge warning">pendente</span>
+                {{end}}
+              </div>
+              {{end}}
+            </div>
+          </div>
 
-            async function copyPayload() {
-                await copyText(document.getElementById("chatPayload").value);
-            }
+          <div class="card">
+            <div class="section-head">
+              <div>
+                <h2>Uso</h2>
+                <p class="muted">Contadores desta instância.</p>
+              </div>
+            </div>
+            <table>
+              <tbody>
+                <tr><td>Total rastreado por provider</td><td><strong>{{.ProviderUsage.ProviderRequests}}</strong></td></tr>
+                <tr><td>Tokens estimados</td><td><strong>{{.ProviderUsage.ProviderTokens}}</strong></td></tr>
+                <tr><td>Sucessos HTTP</td><td><strong>{{.Usage.Success}}</strong></td></tr>
+                <tr><td>Erros HTTP</td><td><strong>{{.Usage.Errors}}</strong></td></tr>
+                <tr><td>Última request</td><td><strong>{{.Usage.LastRequestAt}}</strong></td></tr>
+                <tr><td>Uptime</td><td><strong>{{.Uptime}}s</strong></td></tr>
+                <tr><td>Default source</td><td><strong>{{.DefaultSource}}</strong></td></tr>
+                <tr><td>API key source</td><td><strong>{{.RequestKeySource}}</strong></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </aside>
+      </section>
 
-            async function callSimpleRoute(path) {
-                setRequestInfo(`GET ${path}`);
-                setResponse("Carregando...");
-                try {
-                    const res = await fetch(path, { headers: buildPublicHeaders() });
-                    const body = await res.text();
-                    setResponse(`HTTP ${res.status} ${res.statusText}\n\n${body}`);
-                } catch (err) {
-                    setResponse(`Request failed\n\n${err}`);
-                }
-            }
-
-            async function callChatCompletions(forceStream) {
-                const raw = document.getElementById("chatPayload").value;
-                let payload;
-                try {
-                    payload = JSON.parse(raw);
-                } catch (err) {
-                    setResponse(`JSON inválido no payload\n\n${err}`);
-                    return;
-                }
-
-                payload.model = document.getElementById("chatModel").value.trim() || payload.model;
-                payload.stream = forceStream;
-
-                setRequestInfo(`POST /v1/chat/completions\nstream=${String(forceStream)}\nmodel=${payload.model}\n\n${JSON.stringify(payload, null, 2)}`);
-                setResponse("Enviando...");
-
-                try {
-                    const res = await fetch("/v1/chat/completions", {
-                        method: "POST",
-                        headers: { ...buildPublicHeaders(), "Content-Type": "application/json" },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (!forceStream) {
-                        const body = await res.text();
-                        setResponse(`HTTP ${res.status} ${res.statusText}\n\n${body}`);
-                        return;
-                    }
-
-                    const reader = res.body.getReader();
-                    const decoder = new TextDecoder();
-                    let output = `HTTP ${res.status} ${res.statusText}\n\n`;
-
-                    while (true) {
-                        const { value, done } = await reader.read();
-                        if (done) break;
-                        output += decoder.decode(value, { stream: true });
-                        setResponse(output);
-                    }
-                } catch (err) {
-                    setResponse(`Request failed\n\n${err}`);
-                }
-            }
-        </script>
-    </body>
+      <section class="grid endpoint-grid">
+        <div class="card">
+          <div class="section-head">
+            <h2>OpenAI compatible</h2>
+            <button class="button" type="button" onclick="copySnippet('curl-openai')">Copiar</button>
+          </div>
+          <pre id="curl-openai">curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_REQUEST_API_KEY" \
+  -d '{
+            "model": "default",
+    "messages": [{"role": "user", "content": "Responda apenas: ok"}],
+    "stream": false
+  }'</pre>
+        </div>
+        <div class="card">
+          <div class="section-head">
+            <h2>Ollama compatible</h2>
+            <button class="button" type="button" onclick="copySnippet('curl-ollama')">Copiar</button>
+          </div>
+          <pre id="curl-ollama">curl http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_REQUEST_API_KEY" \
+  -d '{
+    "model": "default",
+    "messages": [{"role": "user", "content": "Olá"}]
+  }'</pre>
+        </div>
+      </section>
+    </main>
+    <script>
+      async function copySnippet(id) {
+        const node = document.getElementById(id);
+        await navigator.clipboard.writeText(node.textContent);
+      }
+    </script>
+  </body>
 </html>

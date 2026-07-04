@@ -1,6 +1,7 @@
 package services
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"os"
@@ -24,6 +25,8 @@ type StoredAuth struct {
 	OpenRouterAppTitle    string `json:"openRouterAppTitle,omitempty"`
 	CloudflareAPIKey      string `json:"cloudflareApiKey,omitempty"`
 	CloudflareAccountID   string `json:"cloudflareAccountId,omitempty"`
+	DefaultModel          string `json:"defaultModel,omitempty"`
+	RequestAPIKey         string `json:"requestApiKey,omitempty"`
 }
 
 func authConfigPath() string {
@@ -75,4 +78,70 @@ func ClearStoredAuth() error {
 		return err
 	}
 	return nil
+}
+
+func ConfiguredDefaultModel() string {
+	if value := validDefaultModel(os.Getenv("DEFAULT_MODEL")); value != "" {
+		return value
+	}
+	stored, err := LoadStoredAuth()
+	if err == nil {
+		if value := validDefaultModel(stored.DefaultModel); value != "" {
+			return value
+		}
+	}
+	return "mimo-v2.5-pro"
+}
+
+func validDefaultModel(model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" || strings.EqualFold(model, "default") {
+		return ""
+	}
+	return model
+}
+
+func ResolveRequestedModel(model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" || strings.EqualFold(model, "default") {
+		return ConfiguredDefaultModel()
+	}
+	return model
+}
+
+func RequestAPIKeys() []string {
+	var keys []string
+	seen := make(map[string]bool)
+	for _, envKey := range []string{"REQUEST_API_KEY", "INFERENCE_API_KEY", "PROXY_API_KEY", "API_KEY"} {
+		value := strings.TrimSpace(os.Getenv(envKey))
+		if value != "" && !seen[value] {
+			keys = append(keys, value)
+			seen[value] = true
+		}
+	}
+	stored, err := LoadStoredAuth()
+	if err == nil {
+		value := strings.TrimSpace(stored.RequestAPIKey)
+		if value != "" && !seen[value] {
+			keys = append(keys, value)
+		}
+	}
+	return keys
+}
+
+func RequestAuthEnabled() bool {
+	return len(RequestAPIKeys()) > 0
+}
+
+func ValidateRequestAPIKey(candidate string) bool {
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return false
+	}
+	for _, key := range RequestAPIKeys() {
+		if subtle.ConstantTimeCompare([]byte(candidate), []byte(key)) == 1 {
+			return true
+		}
+	}
+	return false
 }

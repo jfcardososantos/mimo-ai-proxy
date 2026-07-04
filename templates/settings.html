@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.ProductName}} settings</title>
+    <style>
+      :root {
+        --background: #f8fafc;
+        --foreground: #0f172a;
+        --muted: #64748b;
+        --card: #ffffff;
+        --border: #e2e8f0;
+        --accent: #0f766e;
+        --accent-foreground: #ffffff;
+        --danger: #b91c1c;
+        --soft: #f1f5f9;
+        --radius: 8px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+      a { color: inherit; text-decoration: none; }
+      .shell { max-width: 1120px; margin: 0 auto; padding: 24px; }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: 1.6rem; line-height: 1.2; }
+      h2 { font-size: 1.05rem; }
+      h3 { font-size: 0.95rem; }
+      .muted { color: var(--muted); }
+      .nav, .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      .button, button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0 14px;
+        background: var(--card);
+        color: var(--foreground);
+        font-size: 0.9rem;
+        cursor: pointer;
+      }
+      button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-foreground); }
+      button.danger { border-color: #fecaca; background: #fee2e2; color: var(--danger); }
+      .grid { display: grid; gap: 16px; }
+      .main-grid { grid-template-columns: minmax(0, 1fr) minmax(320px, 0.78fr); }
+      .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px;
+      }
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      label {
+        display: block;
+        margin: 12px 0 7px;
+        color: var(--foreground);
+        font-size: 0.88rem;
+        font-weight: 600;
+      }
+      input, textarea, select {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: #ffffff;
+        color: var(--foreground);
+        padding: 10px 11px;
+        font: inherit;
+      }
+      textarea { min-height: 96px; resize: vertical; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+      code {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        background: var(--soft);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 2px 5px;
+        font-size: 0.86em;
+      }
+      .alert {
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        padding: 12px;
+        margin-bottom: 16px;
+      }
+      .alert.ok { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+      .alert.error { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+      .secret-list { display: grid; gap: 8px; }
+      .secret {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .secret:last-child { border-bottom: 0; }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        border-radius: 999px;
+        padding: 0 10px;
+        background: #ccfbf1;
+        color: #115e59;
+        font-size: 0.78rem;
+        font-weight: 600;
+      }
+      .badge.missing { background: #f1f5f9; color: #475569; }
+      .login {
+        max-width: 420px;
+        margin: 12vh auto 0;
+      }
+      @media (max-width: 880px) {
+        .main-grid, .form-grid { grid-template-columns: 1fr; }
+        .topbar { align-items: flex-start; flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      {{if not .Authenticated}}
+      <section class="card login">
+        <div class="section-head">
+          <div>
+            <h1>{{.ProductName}}</h1>
+            <p class="muted">Configurações protegidas</p>
+          </div>
+        </div>
+        {{if .Error}}<div class="alert error">{{.Error}}</div>{{end}}
+        {{if not .SettingsEnabled}}
+        <div class="alert error">Defina <code>SETTINGS_PASSWORD</code> no env para habilitar esta página.</div>
+        {{else}}
+        <form method="post" action="/settings/login">
+          <label for="password">Senha de configuração</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" autofocus>
+          <div class="actions" style="margin-top: 14px;">
+            <button class="primary" type="submit">Entrar</button>
+            <a class="button" href="/dashboard">Voltar</a>
+          </div>
+        </form>
+        {{end}}
+      </section>
+      {{else}}
+      <header class="topbar">
+        <div>
+          <h1>Configurações</h1>
+          <p class="muted">Credenciais salvas em <code>{{.AuthStore}}</code>.</p>
+        </div>
+        <nav class="nav">
+          <a class="button" href="/dashboard">Dashboard</a>
+          <a class="button" href="{{.ExtensionDownload}}">Baixar extensão</a>
+          <form method="post" action="/settings/logout"><button type="submit">Sair</button></form>
+        </nav>
+      </header>
+
+      {{if .Message}}<div class="alert ok">{{.Message}}</div>{{end}}
+      {{if .Error}}<div class="alert error">{{.Error}}</div>{{end}}
+      {{if .StoredError}}<div class="alert error">Erro ao ler credenciais: {{.StoredError}}</div>{{end}}
+
+      <section class="grid main-grid">
+        <div class="grid">
+          <div class="card">
+            <div class="section-head">
+              <div>
+                <h2>API</h2>
+                <p class="muted">Modelo padrão e proteção das requests.</p>
+              </div>
+            </div>
+            <form method="post" action="/settings/runtime">
+              <div class="grid form-grid">
+                <div>
+                  <label for="default_model">Modelo default</label>
+                  <input id="default_model" name="default_model" type="text" value="{{.DefaultModel}}" placeholder="mimo-v2.5-pro">
+                  <p class="muted" style="margin-top: 6px;">Quando a request vier com <code>"model": "default"</code>, será enviada para este modelo. Origem atual: {{.DefaultSource}}.</p>
+                </div>
+                <div>
+                  <label for="request_api_key">API key das requests</label>
+                  <input id="request_api_key" name="request_api_key" type="password" placeholder="Deixe vazio para manter a chave atual">
+                  <p class="muted" style="margin-top: 6px;">Origem atual: {{.RequestKeySource}}. Também aceita env <code>REQUEST_API_KEY</code>, <code>INFERENCE_API_KEY</code> ou <code>API_KEY</code>.</p>
+                </div>
+              </div>
+              <label style="display: flex; align-items: center; gap: 8px; font-weight: 500;">
+                <input name="clear_request_api_key" type="checkbox" style="width: auto;">
+                Limpar API key salva em <code>data/auth.json</code>
+              </label>
+              <div class="actions" style="margin-top: 14px;">
+                <button class="primary" type="submit">Salvar API</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="section-head">
+              <div>
+                <h2>Xiaomi Mimo</h2>
+                <p class="muted">Importe pela extensão ou cole os dados manualmente.</p>
+              </div>
+            </div>
+            <form method="post" action="/settings/xiaomi/import">
+              <label for="xiaomi_cookie">Cookie bruto Xiaomi</label>
+              <textarea id="xiaomi_cookie" name="xiaomi_cookie" placeholder='serviceToken="..."; userId=...; xiaomichatbot_ph="..."'></textarea>
+              <div class="grid form-grid">
+                <div>
+                  <label for="service_token">Service token</label>
+                  <input id="service_token" name="service_token" type="password">
+                </div>
+                <div>
+                  <label for="user_id">User ID</label>
+                  <input id="user_id" name="user_id" type="text">
+                </div>
+              </div>
+              <label for="xiaomi_chatbot_ph">Xiaomi chatbot PH</label>
+              <input id="xiaomi_chatbot_ph" name="xiaomi_chatbot_ph" type="text">
+              <div class="actions" style="margin-top: 14px;">
+                <button class="primary" type="submit">Salvar Xiaomi</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="section-head">
+              <div>
+                <h2>DeepSeek Web</h2>
+                <p class="muted">A extensão coleta cookie e <code>localStorage.userToken</code>.</p>
+              </div>
+            </div>
+            <form method="post" action="/settings/deepseek/import">
+              <label for="deepseek_cookie">Cookie bruto DeepSeek</label>
+              <textarea id="deepseek_cookie" name="deepseek_cookie"></textarea>
+              <label for="deepseek_token">User token</label>
+              <input id="deepseek_token" name="deepseek_token" type="password">
+              <div class="actions" style="margin-top: 14px;">
+                <button class="primary" type="submit">Salvar DeepSeek</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="section-head">
+              <div>
+                <h2>Provedores oficiais</h2>
+                <p class="muted">Gemini, Groq, OpenRouter e Cloudflare.</p>
+              </div>
+            </div>
+            <form method="post" action="/settings/provider/import">
+              <div class="grid form-grid">
+                <div>
+                  <label for="provider">Provedor</label>
+                  <select id="provider" name="provider">
+                    <option value="gemini">Gemini</option>
+                    <option value="groq">Groq</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="cloudflare">Cloudflare</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="api_key">API key</label>
+                  <input id="api_key" name="api_key" type="password">
+                </div>
+              </div>
+              <div class="grid form-grid">
+                <div>
+                  <label for="account_id">Cloudflare Account ID</label>
+                  <input id="account_id" name="account_id" type="text">
+                </div>
+                <div>
+                  <label for="app_title">OpenRouter App Title</label>
+                  <input id="app_title" name="app_title" type="text" value="flip-ai">
+                </div>
+              </div>
+              <label for="http_referer">OpenRouter HTTP Referer</label>
+              <input id="http_referer" name="http_referer" type="url">
+              <div class="actions" style="margin-top: 14px;">
+                <button class="primary" type="submit">Salvar provedor</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <aside class="grid">
+          <div class="card">
+            <div class="section-head">
+              <div>
+                <h2>Status salvo</h2>
+                <p class="muted">Valores mascarados, sem expor segredo bruto.</p>
+              </div>
+            </div>
+            <div class="secret-list">
+              <div class="secret">
+                <span><code>DEFAULT_MODEL</code></span>
+                <span class="badge">{{$.DefaultModel}}</span>
+              </div>
+              <div class="secret">
+                <span><code>REQUEST_AUTH</code></span>
+                {{if $.RequestAuth}}
+                <span class="badge">ativo</span>
+                {{else}}
+                <span class="badge missing">desativado</span>
+                {{end}}
+              </div>
+              {{range $name, $value := .Stored}}
+              <div class="secret">
+                <span><code>{{$name}}</code></span>
+                {{if $value.present}}
+                <span class="badge">{{$value.masked}}</span>
+                {{else}}
+                <span class="badge missing">ausente</span>
+                {{end}}
+              </div>
+              {{end}}
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="section-head">
+              <div>
+                <h2>Provedores</h2>
+                <p class="muted">Resumo de configuração.</p>
+              </div>
+            </div>
+            <div class="secret-list">
+              {{range .Providers}}
+              <div class="secret">
+                <span>{{.Name}}</span>
+                {{if .Configured}}
+                <span class="badge">ativo</span>
+                {{else}}
+                <span class="badge missing">pendente</span>
+                {{end}}
+              </div>
+              {{end}}
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="section-head">
+              <div>
+                <h2>Zona crítica</h2>
+                <p class="muted">Remove somente o arquivo local de credenciais.</p>
+              </div>
+            </div>
+            <form method="post" action="/settings/clear">
+              <button class="danger" type="submit">Limpar credenciais salvas</button>
+            </form>
+          </div>
+        </aside>
+      </section>
+      {{end}}
+    </main>
+  </body>
+</html>

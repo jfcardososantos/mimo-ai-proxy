@@ -52,6 +52,9 @@ As variáveis de ambiente úteis agora são:
 PORT=3000
 CORS_ORIGIN=*
 API_KEY=
+SETTINGS_PASSWORD=
+DEFAULT_MODEL=mimo-v2.5-pro
+REQUEST_API_KEY=
 AUTH_STORE_PATH=
 GEMINI_API_KEY=
 GROQ_API_KEY=
@@ -62,8 +65,11 @@ CLOUDFLARE_ACCOUNT_ID=
 
 Notas:
 
-- `API_KEY` é opcional.
-- Se definida, ela protege apenas rotas administrativas de sessão/chaves, como `POST /auth/import`, `POST /auth/extension/import`, `POST /auth/provider/import`, `POST /auth/clear` e `GET /auth/debug`.
+- `SETTINGS_PASSWORD` protege `/settings`, a tela de configuração de sessões e chaves.
+- `API_KEY` continua opcional para ambientes que já usam esse segredo.
+- Se `API_KEY`, `SETTINGS_PASSWORD` ou `CONFIG_PASSWORD` estiverem definidos, rotas administrativas de sessão/chaves como `POST /auth/import`, `POST /auth/extension/import`, `POST /auth/provider/import`, `POST /auth/clear` e `GET /auth/debug` exigem `Authorization: Bearer <segredo>` ou `api_key`.
+- `DEFAULT_MODEL` define o modelo usado quando a request enviar `"model": "default"`. Se não for definido no env, pode ser salvo em `/settings`.
+- `REQUEST_API_KEY` protege as rotas de inferência `/v1/*`, `/api/*` e `/open-apis/bot/chat`. Também pode ser salvo em `/settings`. A request deve enviar `Authorization: Bearer <REQUEST_API_KEY>` ou `X-API-Key`.
 - `AUTH_STORE_PATH` é opcional. Se não for definido, a sessão fica em `data/auth.json`.
 - As chaves Gemini/Groq/OpenRouter/Cloudflare são opcionais. Se não forem definidas, o Mimo continua funcionando normalmente e os modelos daquele provider retornam erro de configuração.
 - Essas chaves podem vir do ambiente ou ser salvas em `data/auth.json` pela extensão em `POST /auth/provider/import`.
@@ -84,8 +90,9 @@ Exemplo:
 ```bash
 curl http://localhost:3000/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $REQUEST_API_KEY" \
   -d '{
-    "model": "gemini-3.5-flash",
+    "model": "default",
     "messages": [
       {"role": "user", "content": "Responda em uma frase."}
     ]
@@ -139,7 +146,7 @@ Ou use a pasta local `extension/`.
 No popup da extensão:
 
 1. informe a URL do proxy
-2. informe a `API_KEY` apenas se você protegeu a rota administrativa
+2. informe a `API_KEY`/`SETTINGS_PASSWORD` apenas se você protegeu a rota administrativa
 3. clique em `Import Xiaomi Session`
 
 Se der certo, a sessão será salva em `data/auth.json`.
@@ -156,14 +163,17 @@ Para Cloudflare, informe também o `CLOUDFLARE_ACCOUNT_ID`. Para OpenRouter, `HT
 
 ## Dashboard
 
-A home em `/` foi desenhada para operação rápida:
+A home em `/` e `/dashboard` foi desenhada para operação rápida e não exibe formulários de credenciais:
 
-- status da sessão
-- QR code para abrir o Xiaomi AI Studio
-- download da extensão
+- quantidade de requests da API
+- status da API
+- modelos utilizáveis conforme as credenciais configuradas
+- modelo default ativo
+- estado da proteção por API key nas requests
+- status dos provedores
 - exemplos de uso
-- testador dos endpoints
-- links para debug e limpeza de sessão
+
+As configurações ficam em `/settings` e exigem `SETTINGS_PASSWORD` no ambiente. Nessa tela ficam o modelo default, a API key das requests, os formulários de Xiaomi, DeepSeek, Gemini, Groq, OpenRouter, Cloudflare e limpeza do arquivo local de credenciais.
 
 ## Endpoints
 
@@ -176,8 +186,9 @@ Compatível com o formato de chat da OpenAI.
 ```bash
 curl http://localhost:3000/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $REQUEST_API_KEY" \
   -d '{
-    "model": "mimo-v2.5-pro",
+    "model": "default",
     "messages": [
       {"role": "user", "content": "Explique em uma frase o que este proxy faz."}
     ],

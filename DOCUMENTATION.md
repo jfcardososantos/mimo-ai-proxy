@@ -44,15 +44,31 @@ Proxy que expõe Xiaomi Mimo e provedores gratuitos/oficiais via API compatível
 
 ### Rotas Públicas (não exigem token)
 
-Os endpoints `/v1/*` e `/api/*` são **públicos** — nenhum `Authorization` é necessário. O proxy cuida da autenticação com a Xiaomi internamente via `data/auth.json`.
+Os endpoints `/v1/*`, `/api/*` e `/open-apis/bot/chat` exigem API key quando `REQUEST_API_KEY`, `INFERENCE_API_KEY`, `PROXY_API_KEY`, `API_KEY` ou `requestApiKey` em `data/auth.json` estiver configurado. Sem esses valores, continuam abertos para compatibilidade.
 
-### Rotas Administrativas (protegidas por API_KEY)
-
-Se a variável `API_KEY` estiver definida no ambiente, as rotas administrativas (`POST /auth/import`, `POST /auth/clear`, `GET /auth/debug`) exigem:
+Quando protegidos, envie:
 
 ```
-Authorization: Bearer <API_KEY>
+Authorization: Bearer <REQUEST_API_KEY>
 ```
+
+ou:
+
+```
+X-API-Key: <REQUEST_API_KEY>
+```
+
+O proxy cuida da autenticação com a Xiaomi internamente via `data/auth.json`.
+
+### Rotas Administrativas (protegidas por segredo administrativo)
+
+Se `API_KEY`, `SETTINGS_PASSWORD` ou `CONFIG_PASSWORD` estiverem definidos no ambiente, as rotas administrativas (`POST /auth/import`, `POST /auth/provider/import`, `POST /auth/clear`, `GET /auth/debug`) exigem:
+
+```
+Authorization: Bearer <API_KEY ou SETTINGS_PASSWORD>
+```
+
+A tela `/settings` usa `SETTINGS_PASSWORD` para login e salva um cookie httpOnly de sessão.
 
 ---
 
@@ -63,7 +79,8 @@ Authorization: Bearer <API_KEY>
 | Header | Obrigatório | Descrição |
 |--------|-------------|-----------|
 | `Content-Type` | ✅ | `application/json` |
-| `Authorization` | ❌ | `Bearer <API_KEY>` (só para rotas admin) |
+| `Authorization` | ❌ | `Bearer <REQUEST_API_KEY>` nas rotas de inferência ou `Bearer <API_KEY ou SETTINGS_PASSWORD>` nas rotas admin |
+| `X-API-Key` | ❌ | Chave alternativa para rotas de inferência protegidas |
 | `X-Timezone` | ❌ | Fuso horário (ex: `America/Sao_Paulo`) |
 | `Accept` | ❌ | `application/json` (padrão) |
 
@@ -598,23 +615,23 @@ curl -s http://localhost:3000/auth/status | jq
 
 ### `GET /auth/debug`
 
-Inspeciona os campos da autenticação (requer `API_KEY` se configurada).
+Inspeciona os campos da autenticação (requer segredo administrativo se configurado).
 
 ```bash
 curl -s http://localhost:3000/auth/debug \
-  -H "Authorization: Bearer <API_KEY>" | jq
+  -H "Authorization: Bearer <API_KEY ou SETTINGS_PASSWORD>" | jq
 ```
 
 ---
 
 ### `POST /auth/import`
 
-Importa a sessão manualmente (requer `API_KEY` se configurada).
+Importa a sessão manualmente (requer segredo administrativo se configurado).
 
 ```bash
 curl -s http://localhost:3000/auth/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <API_KEY>" \
+  -H "Authorization: Bearer <API_KEY ou SETTINGS_PASSWORD>" \
   -d '{
     "service_token": "token_aqui",
     "user_id": "user_id_aqui",
@@ -629,11 +646,11 @@ curl -s http://localhost:3000/auth/import \
 
 ### `POST /auth/clear`
 
-Remove a sessão salva (requer `API_KEY` se configurada).
+Remove a sessão salva (requer segredo administrativo se configurado).
 
 ```bash
 curl -s -X POST http://localhost:3000/auth/clear \
-  -H "Authorization: Bearer <API_KEY>" | jq
+  -H "Authorization: Bearer <API_KEY ou SETTINGS_PASSWORD>" | jq
 ```
 
 **Resposta:** `{"cleared": true}`
@@ -642,12 +659,12 @@ curl -s -X POST http://localhost:3000/auth/clear \
 
 ### `POST /auth/provider/import`
 
-Salva credenciais de provedores oficiais em `data/auth.json` (requer `API_KEY` se configurada).
+Salva credenciais de provedores oficiais em `data/auth.json` (requer segredo administrativo se configurado).
 
 ```bash
 curl -s http://localhost:3000/auth/provider/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <API_KEY>" \
+  -H "Authorization: Bearer <API_KEY ou SETTINGS_PASSWORD>" \
   -d '{
     "provider": "gemini",
     "api_key": "chave_aqui"
@@ -667,7 +684,7 @@ Endpoint usado pela extensão do Chrome. Aceita o mesmo payload que `POST /auth/
 ```bash
 curl -s http://localhost:3000/auth/extension/import \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <API_KEY>" \
+  -H "Authorization: Bearer <API_KEY ou SETTINGS_PASSWORD>" \
   -d '{
     "serviceToken": "token_aqui",
     "userId": "user_id_aqui",
@@ -800,6 +817,12 @@ O proxy suporta upload de imagens para a Xiaomi. O processo é:
 | `PORT` | ❌ | `3000` | Porta do servidor |
 | `CORS_ORIGIN` | ❌ | `*` | Origem permitida no CORS |
 | `API_KEY` | ❌ | — | Chave para proteger rotas admin |
+| `SETTINGS_PASSWORD` | ❌ | — | Senha da tela `/settings` e segredo aceito nas rotas admin |
+| `CONFIG_PASSWORD` | ❌ | — | Alias legado/opcional para senha administrativa |
+| `DEFAULT_MODEL` | ❌ | `mimo-v2.5-pro` | Modelo usado quando a request envia `"model": "default"` |
+| `REQUEST_API_KEY` | ❌ | — | Chave exigida por `/v1/*`, `/api/*` e `/open-apis/bot/chat` |
+| `INFERENCE_API_KEY` | ❌ | — | Alias de `REQUEST_API_KEY` |
+| `PROXY_API_KEY` | ❌ | — | Alias de `REQUEST_API_KEY` |
 | `AUTH_STORE_PATH` | ❌ | `data/auth.json` | Caminho do arquivo de sessão |
 | `DEFAULT_WEB_SEARCH` | ❌ | — | Se `true`, ativa web search em todas as chamadas |
 | `AGENT_ENABLE_THINKING` | ❌ | — | Se `true`, mantém thinking ativo mesmo com tools |
