@@ -416,7 +416,7 @@ func runOfficialOllamaRequest(c *gin.Context, spec ollamaRequestSpec, targetMode
 }
 
 func runDeepSeekOllamaRequest(c *gin.Context, spec ollamaRequestSpec, targetModel string, startedAt time.Time) {
-	auth, err := services.GetSelectedDeepSeekAuth()
+	session, auth, err := services.GetSelectedDeepSeekSession()
 	if err != nil {
 		writeOllamaError(c, spec.Stream, http.StatusInternalServerError, "Invalid DeepSeek auth configuration: "+err.Error())
 		return
@@ -437,7 +437,7 @@ func runDeepSeekOllamaRequest(c *gin.Context, spec ollamaRequestSpec, targetMode
 		}
 	}
 	if sessionID == "" {
-		sessionID, err = services.CreateDeepSeekSession(auth, customHeaders)
+		sessionID, err = services.CreateDeepSeekSession(auth, session, customHeaders)
 		if err != nil {
 			writeOllamaError(c, spec.Stream, http.StatusBadGateway, "Failed to create DeepSeek chat session: "+err.Error())
 			return
@@ -463,7 +463,7 @@ func runDeepSeekOllamaRequest(c *gin.Context, spec ollamaRequestSpec, targetMode
 	thinking := deepSeekThinkingEnabled(targetModel)
 	search := strings.Contains(strings.ToLower(targetModel), "search")
 
-	resp, err := services.SendDeepSeekChatRequest(auth, sessionID, prompt, thinking, search, customHeaders)
+	resp, err := services.SendDeepSeekChatRequest(auth, session, sessionID, prompt, thinking, search, customHeaders)
 	if err != nil {
 		writeOllamaError(c, spec.Stream, http.StatusBadGateway, "Failed to call DeepSeek: "+err.Error())
 		return
