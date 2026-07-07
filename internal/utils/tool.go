@@ -391,17 +391,20 @@ func xmlAttrValue(raw string, key string) string {
 }
 
 func xmlAttrValueGreedy(raw string, key string) string {
-	prefix := key + `="`
-	start := strings.Index(raw, prefix)
-	if start == -1 {
-		return ""
+	for _, quote := range []string{`"`, `'`} {
+		prefix := key + `=` + quote
+		start := strings.Index(raw, prefix)
+		if start == -1 {
+			continue
+		}
+		start += len(prefix)
+		end := strings.LastIndex(raw[start:], quote)
+		if end == -1 {
+			continue
+		}
+		return raw[start : start+end]
 	}
-	start += len(prefix)
-	end := strings.LastIndex(raw[start:], `"`)
-	if end == -1 {
-		return ""
-	}
-	return raw[start : start+end]
+	return ""
 }
 
 func parseXMLAttrs(raw string) map[string]string {
@@ -430,9 +433,10 @@ func parseXMLAttrs(raw string) map[string]string {
 		for i < len(raw) && (raw[i] == ' ' || raw[i] == '\n' || raw[i] == '\t' || raw[i] == '\r') {
 			i++
 		}
-		if i >= len(raw) || raw[i] != '"' {
+		if i >= len(raw) || (raw[i] != '"' && raw[i] != '\'') {
 			continue
 		}
+		quote := raw[i]
 		i++
 		var value strings.Builder
 		for i < len(raw) {
@@ -441,7 +445,7 @@ func parseXMLAttrs(raw string) map[string]string {
 				i += 2
 				continue
 			}
-			if raw[i] == '"' {
+			if raw[i] == quote {
 				i++
 				break
 			}

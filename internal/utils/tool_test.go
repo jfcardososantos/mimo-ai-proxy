@@ -102,6 +102,23 @@ func TestParseToolCallsAttributeXMLWithClosingTag(t *testing.T) {
 	}
 }
 
+func TestParseToolCallsAttributeXMLWithSingleQuotedArguments(t *testing.T) {
+	text := `<tool_call name="editor" arguments='{"path":"/tmp/.env.example","old_text":"a","new_text":"b"}'></tool_call>`
+	clean, calls := ParseToolCalls(text)
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(calls))
+	}
+	if calls[0].Function.Name != "editor" {
+		t.Fatalf("unexpected name: %s", calls[0].Function.Name)
+	}
+	if !strings.Contains(calls[0].Function.Arguments, `"/tmp/.env.example"`) || !strings.Contains(calls[0].Function.Arguments, `"new_text":"b"`) {
+		t.Fatalf("unexpected arguments: %s", calls[0].Function.Arguments)
+	}
+	if strings.Contains(clean, "tool_call") {
+		t.Fatalf("expected clean text without tool markup, got %q", clean)
+	}
+}
+
 func TestParseToolCallsAttributedXMLWithJSONBody(t *testing.T) {
 	text := `O ambiente execute_code usa Python isolado.
 <tool_call name="terminal">
