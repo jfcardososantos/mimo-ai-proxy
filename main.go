@@ -499,6 +499,7 @@ func availableModelRows() []gin.H {
 	}
 	if _, _, err := services.GetSelectedKimiSession(); err == nil {
 		rows = append(rows, gin.H{"ID": "kimi-k3", "Provider": "Kimi Web", "Description": "Kimi K3 via sessão do navegador"})
+		rows = append(rows, gin.H{"ID": "kimi-k2.6", "Provider": "Kimi Web", "Description": "Kimi K2.6 via sessão do navegador"})
 	}
 	for _, model := range services.OfficialProviderModels() {
 		id, _ := model["id"].(string)

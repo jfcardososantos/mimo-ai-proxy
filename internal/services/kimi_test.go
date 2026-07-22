@@ -28,7 +28,7 @@ func TestParseKimiConnectStream(t *testing.T) {
 }
 
 func TestKimiModelAliases(t *testing.T) {
-	for _, model := range []string{"kimi-k3", "kimi/k3", "k3"} {
+	for _, model := range []string{"kimi-k3", "kimi/k3", "k3", "kimi-k2.6", "kimi/k2.6", "k2d6"} {
 		if !IsKimiModel(model) {
 			t.Fatalf("expected %q to route to Kimi", model)
 		}

@@ -54,6 +54,7 @@ func handleOllamaTags(c *gin.Context) {
 	addModel("deepseek-chat", "deepseek")
 	addModel("deepseek-reasoner", "deepseek")
 	addModel("kimi-k3", "kimi")
+	addModel("kimi-k2.6", "kimi")
 	for _, model := range services.OfficialProviderModels() {
 		id, _ := model["id"].(string)
 		addModel(id, ollamaFamilyForModel(id))
@@ -393,7 +394,7 @@ func runKimiOllamaRequest(c *gin.Context, spec ollamaRequestSpec, targetModel st
 		writeOllamaError(c, spec.Stream, http.StatusServiceUnavailable, "Invalid Kimi Web session: "+err.Error())
 		return
 	}
-	result, err := services.KimiChat(session, accessToken, spec.Messages)
+	result, err := services.KimiChat(session, accessToken, targetModel, spec.Messages)
 	if err != nil {
 		writeOllamaError(c, spec.Stream, http.StatusBadGateway, "Failed to call Kimi Web: "+err.Error())
 		return

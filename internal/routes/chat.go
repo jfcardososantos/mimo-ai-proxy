@@ -222,6 +222,10 @@ func appendDeepSeekModels(modelsList []map[string]interface{}) []map[string]inte
 			"id": "kimi-k3", "object": "model", "created": 1752969600, "owned_by": "moonshot",
 			"description": "Kimi K3 web chat session",
 		},
+		map[string]interface{}{
+			"id": "kimi-k2.6", "object": "model", "created": 1752969600, "owned_by": "moonshot",
+			"description": "Kimi K2.6 web chat session",
+		},
 	)
 	return modelsList
 }
@@ -816,7 +820,7 @@ func handleKimiChatCompletions(c *gin.Context, input openAIChatInput, completion
 		toolInstructions := utils.FormatToolsAsInstructionsWithChoice(input.Tools, toolChoice)
 		messages = append([]models.Message{{Role: "system", Content: toolInstructions}}, messages...)
 	}
-	result, err := services.KimiChat(session, accessToken, messages)
+	result, err := services.KimiChat(session, accessToken, targetModel, messages)
 	if err != nil {
 		utils.SendError(c, http.StatusBadGateway, "Failed to call Kimi Web: "+err.Error(), "server_error", nil)
 		return

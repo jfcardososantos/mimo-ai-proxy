@@ -21,9 +21,30 @@ type KimiChatResult struct {
 	ReasoningText string
 }
 
+type kimiWebModelConfig struct {
+	Scenario        string
+	KimiPlusID      string
+	ReasoningEffort string
+	ContextLength   string
+}
+
+func resolveKimiWebModel(model string) (kimiWebModelConfig, bool) {
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "kimi-k3", "kimi/k3", "k3":
+		return kimiWebModelConfig{
+			Scenario: "SCENARIO_OK_COMPUTER", KimiPlusID: "ok-computer",
+			ReasoningEffort: "REASONING_EFFORT_MAX", ContextLength: "CONTEXT_LENGTH_L",
+		}, true
+	case "kimi-k2.6", "kimi/k2.6", "k2d6":
+		return kimiWebModelConfig{Scenario: "SCENARIO_K2D5", ReasoningEffort: "REASONING_EFFORT_NONE"}, true
+	default:
+		return kimiWebModelConfig{}, false
+	}
+}
+
 func IsKimiModel(model string) bool {
-	model = strings.ToLower(strings.TrimSpace(model))
-	return model == "kimi-k3" || model == "kimi/k3" || model == "k3"
+	_, ok := resolveKimiWebModel(model)
+	return ok
 }
 
 func GetSelectedKimiSession() (StoredWebSession, string, error) {
@@ -51,7 +72,11 @@ func kimiTokenFromCookie(rawCookie string) string {
 	return ""
 }
 
-func KimiChat(session StoredWebSession, accessToken string, messages []models.Message) (KimiChatResult, error) {
+func KimiChat(session StoredWebSession, accessToken, model string, messages []models.Message) (KimiChatResult, error) {
+	modelConfig, ok := resolveKimiWebModel(model)
+	if !ok {
+		return KimiChatResult{}, fmt.Errorf("unsupported Kimi Web model %q", model)
+	}
 	prompt, systemPrompt, err := foldKimiMessages(messages)
 	if err != nil {
 		return KimiChatResult{}, err
@@ -63,23 +88,27 @@ func KimiChat(session StoredWebSession, accessToken string, messages []models.Me
 	options := map[string]interface{}{
 		"thinking":         true,
 		"enable_plugin":    false,
-		"reasoning_effort": "REASONING_EFFORT_MAX",
-		"context_length":   "CONTEXT_LENGTH_L",
+		"reasoning_effort": modelConfig.ReasoningEffort,
+	}
+	if modelConfig.ContextLength != "" {
+		options["context_length"] = modelConfig.ContextLength
 	}
 	if systemPrompt != "" {
 		options["system_prompt"] = systemPrompt
 	}
 	payload := map[string]interface{}{
-		"chat_id":     "",
-		"kimiplus_id": "ok-computer",
-		"scenario":    "SCENARIO_OK_COMPUTER",
+		"chat_id":  "",
+		"scenario": modelConfig.Scenario,
 		"tools":       []interface{}{},
 		"message": map[string]interface{}{
 			"id": "", "parent_id": "", "children_message_ids": []interface{}{}, "role": "user",
 			"blocks": []interface{}{map[string]interface{}{"id": "", "message_id": "", "text": map[string]string{"content": prompt}}},
-			"scenario": "SCENARIO_OK_COMPUTER", "labels": []interface{}{}, "references": []interface{}{}, "is_goal": false,
+			"scenario": modelConfig.Scenario, "labels": []interface{}{}, "references": []interface{}{}, "is_goal": false,
 		},
 		"options": options, "project_id": "",
+	}
+	if modelConfig.KimiPlusID != "" {
+		payload["kimiplus_id"] = modelConfig.KimiPlusID
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
