@@ -53,6 +53,7 @@ func handleOllamaTags(c *gin.Context) {
 	addModel("default", "flip-ai")
 	addModel("deepseek-chat", "deepseek")
 	addModel("deepseek-reasoner", "deepseek")
+	addModel("kimi-k3", "kimi")
 	for _, model := range services.OfficialProviderModels() {
 		id, _ := model["id"].(string)
 		addModel(id, ollamaFamilyForModel(id))
@@ -227,6 +228,10 @@ func runOllamaRequest(c *gin.Context, spec ollamaRequestSpec) {
 		runDeepSeekOllamaRequest(c, spec, selectedModel, startedAt)
 		return
 	}
+	if services.IsKimiModel(selectedModel) {
+		runKimiOllamaRequest(c, spec, selectedModel, startedAt)
+		return
+	}
 	if provider, ok := services.SelectOfficialProvider(selectedModel); ok {
 		runOfficialOllamaRequest(c, spec, selectedModel, provider, startedAt)
 		return
@@ -376,6 +381,29 @@ func runOllamaRequest(c *gin.Context, spec ollamaRequestSpec) {
 	}
 
 	respondOllamaNonStream(c, bodyReader, spec, targetModel, query, sessionHandle, toolInstructions, startedAt)
+}
+
+func runKimiOllamaRequest(c *gin.Context, spec ollamaRequestSpec, targetModel string, startedAt time.Time) {
+	if len(spec.Tools) > 0 {
+		writeOllamaError(c, spec.Stream, http.StatusBadRequest, "Kimi Web does not support Ollama tools")
+		return
+	}
+	session, accessToken, err := services.GetSelectedKimiSession()
+	if err != nil {
+		writeOllamaError(c, spec.Stream, http.StatusServiceUnavailable, "Invalid Kimi Web session: "+err.Error())
+		return
+	}
+	result, err := services.KimiChat(session, accessToken, spec.Messages)
+	if err != nil {
+		writeOllamaError(c, spec.Stream, http.StatusBadGateway, "Failed to call Kimi Web: "+err.Error())
+		return
+	}
+	usage := estimateOllamaUsage(spec.Messages, result.Content)
+	if spec.Stream {
+		streamBufferedOllamaResult(c, spec, targetModel, result.Content, result.ReasoningText, nil, "stop", usage, startedAt)
+		return
+	}
+	writeOllamaBufferedResult(c, spec, targetModel, result.Content, result.ReasoningText, nil, "stop", usage, startedAt)
 }
 
 func runOfficialOllamaRequest(c *gin.Context, spec ollamaRequestSpec, targetModel string, provider services.OfficialProvider, startedAt time.Time) {

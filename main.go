@@ -442,6 +442,17 @@ func providerRows(stored services.StoredAuth, storedErr error) []gin.H {
 		"Detail":     errString(xiaomiErr),
 	})
 
+	_, _, kimiErr := services.GetSelectedKimiSession()
+	kimiConfigured := kimiErr == nil
+	rows = append(rows, gin.H{
+		"Name":       "Kimi Web",
+		"Key":        "kimi",
+		"Configured": kimiConfigured,
+		"Source":     sourceWhenConfigured(kimiConfigured, "data/auth.json"),
+		"Status":     statusLabel(kimiConfigured),
+		"Detail":     errString(kimiErr),
+	})
+
 	_, deepSeekErr := services.GetSelectedDeepSeekAuth()
 	deepSeekConfigured := deepSeekErr == nil
 	rows = append(rows, gin.H{
@@ -485,6 +496,9 @@ func availableModelRows() []gin.H {
 			gin.H{"ID": "deepseek-reasoner", "Provider": "DeepSeek Web", "Description": "DeepSeek com thinking"},
 			gin.H{"ID": "deepseek-search", "Provider": "DeepSeek Web", "Description": "DeepSeek com busca web"},
 		)
+	}
+	if _, _, err := services.GetSelectedKimiSession(); err == nil {
+		rows = append(rows, gin.H{"ID": "kimi-k3", "Provider": "Kimi Web", "Description": "Kimi K3 via sessão do navegador"})
 	}
 	for _, model := range services.OfficialProviderModels() {
 		id, _ := model["id"].(string)

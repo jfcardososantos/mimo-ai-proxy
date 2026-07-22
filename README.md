@@ -84,6 +84,7 @@ Além dos modelos `mimo-*`, o endpoint `POST /v1/chat/completions` roteia automa
 |-----------------|----------|-----------------------|
 | `gemini-3.5-flash` | Google Gemini API | `GEMINI_API_KEY` |
 | `groq/llama-3.1-8b-instant` | Groq | `GROQ_API_KEY` |
+| `kimi-k3` | Kimi Web (sessão do navegador) | importe a sessão Kimi pela extensão |
 | `openrouter/meta-llama/llama-3.1-8b-instruct:free` | OpenRouter | `OPENROUTER_API_KEY` |
 | `cf/@cf/meta/llama-3.1-8b-instruct` | Cloudflare Workers AI | `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID` |
 
@@ -228,7 +229,7 @@ curl http://localhost:3000/api/chat \
 #### `POST /api/generate`
 
 Compatível com o formato `generate` do Ollama.
-Aceita os mesmos modelos roteáveis do chat: `mimo-*`, `deepseek*`, `gemini-*`, `groq/*`, `openrouter/*` e `cf/*`.
+Aceita os mesmos modelos roteáveis do chat: `mimo-*`, `deepseek*`, `kimi-k3`, `gemini-*`, `groq/*`, `openrouter/*` e `cf/*`.
 
 Se `stream` não for enviado, o proxy assume `false`.
 

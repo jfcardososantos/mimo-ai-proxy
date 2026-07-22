@@ -41,6 +41,13 @@ func WebProviderDefinitions() []WebProviderDefinition {
 			Implemented: true,
 		},
 		{
+			ID:          "kimi",
+			Name:        "Kimi Web",
+			LoginURL:    "https://www.kimi.com/",
+			Description: "Adapter web implementado com access_token do localStorage e cookie de contingência.",
+			Implemented: true,
+		},
+		{
 			ID:          "gemini-web",
 			Name:        "Gemini Web",
 			LoginURL:    "https://gemini.google.com/",
@@ -140,6 +147,9 @@ func WebSessionToken(session StoredWebSession) string {
 	if token := strings.TrimSpace(session.Storage["userToken"]); token != "" {
 		return token
 	}
+	if token := strings.TrimSpace(session.Storage["access_token"]); token != "" {
+		return token
+	}
 	if authHeader := strings.TrimSpace(session.Headers["authorization"]); strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 		return strings.TrimSpace(authHeader[7:])
 	}
@@ -175,6 +185,10 @@ func ValidateWebSessionInput(provider string, session StoredWebSession) (StoredW
 		}
 		if strings.TrimSpace(session.Storage["userToken"]) == "" {
 			session.Storage["userToken"] = auth.Token
+		}
+	case "kimi":
+		if WebSessionToken(session) == "" && kimiTokenFromCookie(session.Cookie) == "" {
+			return StoredWebSession{}, errors.New("missing Kimi access_token from localStorage or kimi-auth cookie")
 		}
 	default:
 		if session.Cookie == "" {

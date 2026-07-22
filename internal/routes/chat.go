@@ -196,7 +196,7 @@ func appendDeepSeekModels(modelsList []map[string]interface{}) []map[string]inte
 		"description": "Alias resolved by flip-ai DEFAULT_MODEL/defaultModel",
 	})
 	modelsList = append(modelsList, services.OfficialProviderModels()...)
-	return append(modelsList,
+	modelsList = append(modelsList,
 		map[string]interface{}{
 			"id":          "deepseek-chat",
 			"object":      "model",
@@ -218,7 +218,12 @@ func appendDeepSeekModels(modelsList []map[string]interface{}) []map[string]inte
 			"owned_by":    "deepseek",
 			"description": "DeepSeek web chat session with web search enabled",
 		},
+		map[string]interface{}{
+			"id": "kimi-k3", "object": "model", "created": 1752969600, "owned_by": "moonshot",
+			"description": "Kimi K3 web chat session",
+		},
 	)
+	return modelsList
 }
 
 func handleDirectProxy(c *gin.Context) {
@@ -486,6 +491,10 @@ func handleChatCompletions(c *gin.Context) {
 
 	if len(input.Messages) == 0 {
 		utils.SendError(c, http.StatusBadRequest, "Messages array is required and cannot be empty", "invalid_request_error", nil)
+		return
+	}
+	if services.IsKimiModel(targetModel) {
+		handleKimiChatCompletions(c, input, completionID, cacheKey, targetModel)
 		return
 	}
 
@@ -792,6 +801,32 @@ func handleChatCompletions(c *gin.Context) {
 	}
 
 	processNonStream(c, bodyReader, completionID, targetModel, cacheKey, historyID, query, statToken, input.ParallelToolCalls, len(input.Tools) == 0, agentMode)
+}
+
+func handleKimiChatCompletions(c *gin.Context, input openAIChatInput, completionID string, cacheKey string, targetModel string) {
+	if len(input.Tools) > 0 {
+		utils.SendError(c, http.StatusBadRequest, "Kimi Web does not support OpenAI tools.", "invalid_request_error", nil)
+		return
+	}
+	session, accessToken, err := services.GetSelectedKimiSession()
+	if err != nil {
+		utils.SendError(c, http.StatusServiceUnavailable, "Invalid Kimi Web session: "+err.Error(), "server_error", nil)
+		return
+	}
+	result, err := services.KimiChat(session, accessToken, input.Messages)
+	if err != nil {
+		utils.SendError(c, http.StatusBadGateway, "Failed to call Kimi Web: "+err.Error(), "server_error", nil)
+		return
+	}
+	deepSeekResult := models.DeepSeekChatResult{Content: result.Content, ReasoningText: result.ReasoningText}
+	deepSeekResult.Usage = services.EstimateUsageFromMessages(input.Messages, result.Content)
+	if input.Stream {
+		writeDeepSeekStreamResponse(c, completionID, targetModel, deepSeekResult, nil)
+		return
+	}
+	response := buildDeepSeekNonStreamResponse(completionID, targetModel, deepSeekResult, nil)
+	services.GlobalCache.Set(cacheKey, response, 5*time.Minute)
+	c.JSON(http.StatusOK, response)
 }
 
 func handleDeepSeekChatCompletions(c *gin.Context, input openAIChatInput, completionID string, cacheKey string, targetModel string) {
